@@ -194,9 +194,11 @@ func unzip(zipPath, dest string) error {
 	}
 	defer reader.Close()
 
+	cleanDest := filepath.Clean(dest) + string(os.PathSeparator)
 	for _, file := range reader.File {
 		path := filepath.Join(dest, file.Name)
-		if !strings.HasPrefix(path, dest) {
+		cleanPath := filepath.Clean(path)
+		if !strings.HasPrefix(cleanPath, cleanDest) {
 			return fmt.Errorf("invalid zip path: %s", file.Name)
 		}
 		if file.FileInfo().IsDir() {
@@ -614,10 +616,7 @@ func normalizeText(value string) string {
 }
 
 func compareValues(sentValue, rawValue string, sentFound, rawFound bool, entry SensorMapping) string {
-	if !sentFound && !rawFound {
-		return "MISSING_SENT"
-	}
-	if !sentFound && rawFound {
+	if !sentFound {
 		return "MISSING_SENT"
 	}
 	if sentFound && !rawFound {
