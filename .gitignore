@@ -1,0 +1,4 @@
+/outbox/
+*.zip
+*.partial
+*.sqlite3

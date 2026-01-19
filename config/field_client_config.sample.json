@@ -1,0 +1,10 @@
+{
+  "site_id": "siteA",
+  "device_id": "device01",
+  "work_field": "서천지하차도",
+  "outbox_dir": "/var/lib/field-client/outbox",
+  "sensor_data_log_path": "/var/log/underware/sent_sensor_data.log",
+  "remote_host": "10.0.0.10",
+  "remote_user": "ingest",
+  "remote_path": "/srv/field-ingest/incoming"
+}
