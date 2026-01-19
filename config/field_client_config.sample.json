@@ -1,10 +1,19 @@
 {
   "site_id": "siteA",
   "device_id": "device01",
-  "work_field": "서천지하차도",
-  "outbox_dir": "/var/lib/field-client/outbox",
-  "sensor_data_log_path": "/var/log/underware/sent_sensor_data.log",
-  "remote_host": "10.0.0.10",
-  "remote_user": "ingest",
-  "remote_path": "/srv/field-ingest/incoming"
+  "outbox_dir": "/home/eumit/field-outbox",
+  "log_root": "/home/eumit/Downloads/underware202408-main/log",
+  "include_globs": ["GATE*", "WLS*", "PUMP*", "TEMP*"],
+  "exclude_dirs": ["ALL", "PING", "SERVER"],
+  "duplicate_run_threshold": 3,
+  "status_thresholds": {
+    "error_timeout": 3,
+    "error_no_response": 3,
+    "error_zero_data": 10,
+    "error_duplicates": 50,
+    "warning_timeout": 1,
+    "warning_no_response": 1,
+    "warning_zero_data": 1,
+    "warning_duplicates": 10
+  }
 }
