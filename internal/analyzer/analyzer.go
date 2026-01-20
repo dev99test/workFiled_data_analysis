@@ -241,9 +241,13 @@ func findSensorDirs(root string, includeGlobs, excludeDirs []string) ([]string, 
 	}
 
 	exclude := map[string]struct{}{}
+	if len(excludeDirs) == 0 {
+		excludeDirs = []string{"ALL", "PING"}
+	}
 	for _, name := range excludeDirs {
 		exclude[strings.ToLower(name)] = struct{}{}
 	}
+	exclude["server"] = struct{}{}
 
 	var dirs []string
 	for _, pattern := range includeGlobs {
@@ -257,6 +261,9 @@ func findSensorDirs(root string, includeGlobs, excludeDirs []string) ([]string, 
 				continue
 			}
 			base := strings.ToLower(filepath.Base(match))
+			if base == "server" {
+				continue
+			}
 			if _, skip := exclude[base]; skip {
 				continue
 			}
