@@ -21,13 +21,9 @@ type Config struct {
 	DuplicateRunThreshold  int                       `json:"duplicate_run_threshold"`
 	FallbackToLatestFile   *bool                     `json:"fallback_to_latest_file"`
 	Debug                  bool                      `json:"debug"`
-	ImmediateMaxGapLines   int                       `json:"immediate_max_gap_lines"`
 	DelayThresholdMs       int64                     `json:"delay_threshold_ms"`
 	DelayMaxGapLines       int                       `json:"delay_max_gap_lines"`
-	WLSValueByteIndexStart int                       `json:"wls_value_byte_index_start"`
-	WLSValueByteLen        int                       `json:"wls_value_byte_len"`
-	WLSEndian              string                    `json:"wls_endian"`
-	WLSValueScale          float64                   `json:"wls_value_scale"`
+	DelayThresholdByTypeMs map[string]int64          `json:"delay_threshold_ms_by_type"`
 	StatusThresholds       analyzer.StatusThresholds `json:"status_thresholds"`
 }
 
@@ -86,13 +82,9 @@ func runAnalyzeDaily(args []string) {
 		DuplicateRunThreshold:  cfg.DuplicateRunThreshold,
 		FallbackToLatestFile:   fallback,
 		Debug:                  cfg.Debug,
-		ImmediateMaxGapLines:   cfg.ImmediateMaxGapLines,
 		DelayThresholdMs:       cfg.DelayThresholdMs,
 		DelayMaxGapLines:       cfg.DelayMaxGapLines,
-		WLSValueByteIndexStart: cfg.WLSValueByteIndexStart,
-		WLSValueByteLen:        cfg.WLSValueByteLen,
-		WLSEndian:              cfg.WLSEndian,
-		WLSValueScale:          cfg.WLSValueScale,
+		DelayThresholdByTypeMs: cfg.DelayThresholdByTypeMs,
 		StatusThresholds:       cfg.StatusThresholds,
 	}
 

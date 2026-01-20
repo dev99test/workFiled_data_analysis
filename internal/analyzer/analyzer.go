@@ -22,13 +22,9 @@ type Config struct {
 	DuplicateRunThreshold  int
 	FallbackToLatestFile   bool
 	Debug                  bool
-	ImmediateMaxGapLines   int
 	DelayThresholdMs       int64
 	DelayMaxGapLines       int
-	WLSValueByteIndexStart int
-	WLSValueByteLen        int
-	WLSEndian              string
-	WLSValueScale          float64
+	DelayThresholdByTypeMs map[string]int64
 	StatusThresholds       StatusThresholds
 }
 
@@ -44,24 +40,27 @@ type StatusThresholds struct {
 }
 
 type Metrics struct {
-	Lines          int           `json:"lines"`
-	Timeout        int           `json:"timeout"`
-	NoResponse     int           `json:"no_response"`
-	ZeroData       int           `json:"zero_data"`
-	Duplicates     int           `json:"duplicates"`
-	PairsTotal     int           `json:"pairs_total"`
-	MissingTotal   int           `json:"missing_total"`
-	DelayedTotal   int           `json:"delayed_total"`
-	LastRcvAt      string        `json:"last_rcv_at"`
-	LatencyMs      LatencyStats  `json:"latency_ms"`
-	LineGap        LineGapConfig `json:"line_gap"`
-	UniqueRatioPct *float64      `json:"unique_ratio_pct"`
-	WLSLastValueCm *int          `json:"wls_last_value_cm,omitempty"`
-	WLSMinValueCm  *int          `json:"wls_min_value_cm,omitempty"`
-	WLSMaxValueCm  *int          `json:"wls_max_value_cm,omitempty"`
-	WLSTopValues   []WLSValue    `json:"wls_top_values,omitempty"`
-	TotalPayloads  int           `json:"-"`
-	UniquePayloads int           `json:"-"`
+	Lines            int          `json:"-"`
+	Timeout          int          `json:"timeout"`
+	NoResponse       int          `json:"no_response"`
+	ZeroData         int          `json:"zero_data"`
+	Duplicates       int          `json:"duplicates"`
+	PairsTotal       int          `json:"pairs_total"`
+	MissingTotal     int          `json:"missing_total"`
+	DelayedSamples   int          `json:"delayed_samples"`
+	LastRcvAt        string       `json:"last_rcv_at"`
+	TimeRange        TimeRange    `json:"time_range"`
+	SampleCount      int          `json:"sample_count"`
+	ResponseTime     ResponseTime `json:"response_time"`
+	DelayThresholdMs int64        `json:"delay_threshold_ms"`
+	DelayMaxGapLines int          `json:"delay_max_gap_lines"`
+	UniqueRatioPct   *float64     `json:"unique_ratio_pct"`
+	WLSLastValueCm   *int         `json:"wls_last_value_cm,omitempty"`
+	WLSMinValueCm    *int         `json:"wls_min_value_cm,omitempty"`
+	WLSMaxValueCm    *int         `json:"wls_max_value_cm,omitempty"`
+	WLSTopValues     []WLSValue   `json:"wls_top_values,omitempty"`
+	TotalPayloads    int          `json:"-"`
+	UniquePayloads   int          `json:"-"`
 }
 
 type Examples struct {
@@ -72,16 +71,16 @@ type Examples struct {
 	Note                string `json:"note,omitempty"`
 }
 
-type LatencyStats struct {
-	Min *int64   `json:"min"`
-	Avg *float64 `json:"avg"`
-	P95 *int64   `json:"p95"`
-	Max *int64   `json:"max"`
+type ResponseTime struct {
+	MinMs    *int64 `json:"min_ms"`
+	AvgMs    *int64 `json:"avg_ms"`
+	MaxMs    *int64 `json:"max_ms"`
+	MaxHuman string `json:"max_human,omitempty"`
 }
 
-type LineGapConfig struct {
-	ImmediateMaxGapLines int `json:"immediate_max_gap_lines"`
-	DelayMaxGapLines     int `json:"delay_max_gap_lines"`
+type TimeRange struct {
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
 }
 
 type WLSValue struct {
@@ -398,23 +397,14 @@ func withDefaultThresholds(cfg Config) Config {
 	if cfg.StatusThresholds.WarningDuplicates == 0 {
 		cfg.StatusThresholds.WarningDuplicates = 10
 	}
-	if cfg.ImmediateMaxGapLines == 0 {
-		cfg.ImmediateMaxGapLines = 1
-	}
 	if cfg.DelayThresholdMs == 0 {
 		cfg.DelayThresholdMs = 2000
 	}
 	if cfg.DelayMaxGapLines == 0 {
 		cfg.DelayMaxGapLines = 5
 	}
-	if cfg.WLSValueByteLen == 0 {
-		cfg.WLSValueByteLen = 2
-	}
-	if cfg.WLSEndian == "" {
-		cfg.WLSEndian = "big"
-	}
-	if cfg.WLSValueScale == 0 {
-		cfg.WLSValueScale = 1
+	if cfg.DelayThresholdByTypeMs == nil {
+		cfg.DelayThresholdByTypeMs = map[string]int64{}
 	}
 	return cfg
 }
@@ -471,6 +461,12 @@ func analyzeLines(lines []string, datePrefix string, sensorType string, cfg Conf
 
 func updateMetrics(metrics Metrics, examples Examples, line string, sensorType string, cfg Config, payloadCounts map[string]int, lastPayload string, consecutive int, state SensorState) (Metrics, Examples, string, int, SensorState) {
 	metrics.Lines++
+	if metrics.DelayThresholdMs == 0 {
+		metrics.DelayThresholdMs = delayThresholdMs(cfg, sensorType)
+	}
+	if metrics.DelayMaxGapLines == 0 {
+		metrics.DelayMaxGapLines = cfg.DelayMaxGapLines
+	}
 	trimmed := strings.TrimLeft(line, " \t")
 	lower := strings.ToLower(trimmed)
 	lineTime, hasTime := parseLineTime(trimmed)
@@ -488,22 +484,29 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 	}
 
 	if hasTime && strings.Contains(lower, "snd:") {
+		state.EventCount++
+		state = updateTimeRange(state, lineTime)
 		if state.HasPending {
 			metrics.MissingTotal++
 		}
 		state.PendingSentAt = lineTime
 		state.PendingLine = metrics.Lines
 		state.HasPending = true
+		state.SndCount++
 	}
 
 	if hasTime && strings.Contains(lower, "rcv:") {
+		state.EventCount++
+		state = updateTimeRange(state, lineTime)
 		state.LastRcvAt = lineTime
+		state.RcvCount++
 		if state.HasPending {
 			latency := lineTime.Sub(state.PendingSentAt).Milliseconds()
 			lineGap := metrics.Lines - state.PendingLine
 			metrics.PairsTotal++
-			if latency >= cfg.DelayThresholdMs || lineGap > cfg.DelayMaxGapLines {
-				metrics.DelayedTotal++
+			delayThreshold := delayThresholdMs(cfg, sensorType)
+			if latency >= delayThreshold || lineGap > cfg.DelayMaxGapLines {
+				metrics.DelayedSamples++
 			}
 			state.Latencies = append(state.Latencies, latency)
 			state.HasPending = false
@@ -534,7 +537,7 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 			consecutive = 1
 		}
 		if strings.EqualFold(sensorType, "WLS") {
-			if value, ok := parseWLSValue(payload, cfg); ok {
+			if value, ok := parseWLSValue(payload); ok {
 				state.WLSCounts[value]++
 				state.WLSLast = &value
 				if state.WLSMin == nil || value < *state.WLSMin {
@@ -605,15 +608,21 @@ func latestFile(files []string) (string, error) {
 }
 
 type SensorState struct {
-	PendingSentAt time.Time
-	PendingLine   int
-	HasPending    bool
-	Latencies     []int64
-	LastRcvAt     time.Time
-	WLSCounts     map[int]int
-	WLSLast       *int
-	WLSMin        *int
-	WLSMax        *int
+	PendingSentAt  time.Time
+	PendingLine    int
+	HasPending     bool
+	Latencies      []int64
+	LastRcvAt      time.Time
+	TimeRangeStart time.Time
+	TimeRangeEnd   time.Time
+	HasTimeRange   bool
+	SndCount       int
+	RcvCount       int
+	EventCount     int
+	WLSCounts      map[int]int
+	WLSLast        *int
+	WLSMin         *int
+	WLSMax         *int
 }
 
 func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payloadCounts map[string]int, cfg Config) (Metrics, Examples) {
@@ -623,13 +632,21 @@ func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payl
 	if !state.LastRcvAt.IsZero() {
 		metrics.LastRcvAt = state.LastRcvAt.Format(time.RFC3339)
 	}
+	if state.HasTimeRange {
+		metrics.TimeRange = TimeRange{
+			From: state.TimeRangeStart.Format(time.RFC3339),
+			To:   state.TimeRangeEnd.Format(time.RFC3339),
+		}
+	} else {
+		if examples.Note == "" {
+			examples.Note = "no timestamps found for date"
+		}
+	}
+	metrics.SampleCount = state.EventCount
 	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
 	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
-	metrics.LineGap = LineGapConfig{
-		ImmediateMaxGapLines: cfg.ImmediateMaxGapLines,
-		DelayMaxGapLines:     cfg.DelayMaxGapLines,
-	}
-	metrics.LatencyMs = calculateLatencyStats(state.Latencies)
+	metrics.ResponseTime = calculateResponseTime(state.Latencies)
+	metrics.DelayMaxGapLines = cfg.DelayMaxGapLines
 	if len(state.WLSCounts) > 0 {
 		metrics.WLSLastValueCm = state.WLSLast
 		metrics.WLSMinValueCm = state.WLSMin
@@ -637,14 +654,21 @@ func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payl
 		metrics.WLSTopValues = topWLSValues(state.WLSCounts)
 	}
 	if metrics.TotalPayloads == 0 {
-		examples.Note = "no payload for date"
+		if examples.Note == "" {
+			examples.Note = "no payload for date"
+		}
+	}
+	if metrics.PairsTotal == 0 && metrics.LastRcvAt == "" {
+		if examples.Note == "" {
+			examples.Note = "no rcv events found for date; cannot compute response time"
+		}
 	}
 	return metrics, examples
 }
 
-func calculateLatencyStats(latencies []int64) LatencyStats {
+func calculateResponseTime(latencies []int64) ResponseTime {
 	if len(latencies) == 0 {
-		return LatencyStats{}
+		return ResponseTime{}
 	}
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 	min := latencies[0]
@@ -653,17 +677,12 @@ func calculateLatencyStats(latencies []int64) LatencyStats {
 	for _, value := range latencies {
 		sum += value
 	}
-	avg := float64(sum) / float64(len(latencies))
-	p95Index := int(float64(len(latencies))*0.95) - 1
-	if p95Index < 0 {
-		p95Index = 0
-	}
-	p95 := latencies[p95Index]
-	return LatencyStats{
-		Min: &min,
-		Avg: &avg,
-		P95: &p95,
-		Max: &max,
+	avg := int64(float64(sum) / float64(len(latencies)))
+	return ResponseTime{
+		MinMs:    &min,
+		AvgMs:    &avg,
+		MaxMs:    &max,
+		MaxHuman: formatDuration(max),
 	}
 }
 
@@ -683,33 +702,54 @@ func parseLineTime(line string) (time.Time, bool) {
 	return parsed, true
 }
 
-func parseWLSValue(payload string, cfg Config) (int, bool) {
+func updateTimeRange(state SensorState, value time.Time) SensorState {
+	if state.HasTimeRange {
+		if value.Before(state.TimeRangeStart) {
+			state.TimeRangeStart = value
+		}
+		if value.After(state.TimeRangeEnd) {
+			state.TimeRangeEnd = value
+		}
+	} else {
+		state.TimeRangeStart = value
+		state.TimeRangeEnd = value
+		state.HasTimeRange = true
+	}
+	return state
+}
+
+func delayThresholdMs(cfg Config, sensorType string) int64 {
+	if sensorType != "" && cfg.DelayThresholdByTypeMs != nil {
+		if value, ok := cfg.DelayThresholdByTypeMs[strings.ToUpper(sensorType)]; ok {
+			return value
+		}
+	}
+	return cfg.DelayThresholdMs
+}
+
+func formatDuration(ms int64) string {
+	if ms < 1000 {
+		return fmt.Sprintf("%dms", ms)
+	}
+	seconds := ms / 1000
+	if seconds < 60 {
+		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	}
+	minutes := seconds / 60
+	remSeconds := seconds % 60
+	return fmt.Sprintf("%dm %ds", minutes, remSeconds)
+}
+
+func parseWLSValue(payload string) (int, bool) {
 	bytes, ok := parsePayloadBytes(payload)
 	if !ok {
 		return 0, false
 	}
-	start := cfg.WLSValueByteIndexStart
-	length := cfg.WLSValueByteLen
-	if start < 0 || length <= 0 || start+length > len(bytes) {
+	if len(bytes) < 6 {
 		return 0, false
 	}
-	var value int
-	switch strings.ToLower(cfg.WLSEndian) {
-	case "little":
-		for i := length - 1; i >= 0; i-- {
-			value = (value << 8) + int(bytes[start+i])
-		}
-	default:
-		for i := 0; i < length; i++ {
-			value = (value << 8) + int(bytes[start+i])
-		}
-	}
-	scale := cfg.WLSValueScale
-	if scale == 0 {
-		scale = 1
-	}
-	scaled := int(float64(value) * scale)
-	return scaled, true
+	value := int(bytes[4])<<8 + int(bytes[5])
+	return value, true
 }
 
 func parsePayloadBytes(payload string) ([]byte, bool) {

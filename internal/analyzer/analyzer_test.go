@@ -123,11 +123,11 @@ func TestSndRcvPairsAndLatency(t *testing.T) {
 	if metrics.PairsTotal != 1 {
 		t.Fatalf("expected pairs_total 1, got %d", metrics.PairsTotal)
 	}
-	if metrics.DelayedTotal != 0 {
-		t.Fatalf("expected delayed_total 0, got %d", metrics.DelayedTotal)
+	if metrics.DelayedSamples != 0 {
+		t.Fatalf("expected delayed_samples 0, got %d", metrics.DelayedSamples)
 	}
-	if metrics.LatencyMs.Min == nil || *metrics.LatencyMs.Min != 1000 {
-		t.Fatalf("expected min latency 1000ms, got %+v", metrics.LatencyMs.Min)
+	if metrics.ResponseTime.MinMs == nil || *metrics.ResponseTime.MinMs != 1000 {
+		t.Fatalf("expected min latency 1000ms, got %+v", metrics.ResponseTime.MinMs)
 	}
 }
 
@@ -149,24 +149,20 @@ func TestMissingWhenNextSndArrives(t *testing.T) {
 
 func TestParseWLSValue(t *testing.T) {
 	cfg := Config{
-		DuplicateRunThreshold:  3,
-		WLSValueByteIndexStart: 0,
-		WLSValueByteLen:        2,
-		WLSEndian:              "big",
-		WLSValueScale:          1.0,
+		DuplicateRunThreshold: 3,
 	}
 	metrics, _ := analyzeLines([]string{
-		"2026-01-19 00:00:01.000 rcv: (00, 0A)",
-		"2026-01-19 00:00:02.000 rcv: (00, 0B)",
+		"2026-01-19 00:00:01.000 rcv: (FA, FF, 07, 15, 00, 60, DD, DD, FF, 88, 76)",
+		"2026-01-19 00:00:02.000 rcv: (FA, FF, 07, 15, 00, 61, DD, DD, FF, 88, 76)",
 	}, "2026-01-19", "WLS", cfg)
 
-	if metrics.WLSLastValueCm == nil || *metrics.WLSLastValueCm != 11 {
-		t.Fatalf("expected last value 11, got %+v", metrics.WLSLastValueCm)
+	if metrics.WLSLastValueCm == nil || *metrics.WLSLastValueCm != 97 {
+		t.Fatalf("expected last value 97, got %+v", metrics.WLSLastValueCm)
 	}
-	if metrics.WLSMinValueCm == nil || *metrics.WLSMinValueCm != 10 {
-		t.Fatalf("expected min value 10, got %+v", metrics.WLSMinValueCm)
+	if metrics.WLSMinValueCm == nil || *metrics.WLSMinValueCm != 96 {
+		t.Fatalf("expected min value 96, got %+v", metrics.WLSMinValueCm)
 	}
-	if metrics.WLSMaxValueCm == nil || *metrics.WLSMaxValueCm != 11 {
-		t.Fatalf("expected max value 11, got %+v", metrics.WLSMaxValueCm)
+	if metrics.WLSMaxValueCm == nil || *metrics.WLSMaxValueCm != 97 {
+		t.Fatalf("expected max value 97, got %+v", metrics.WLSMaxValueCm)
 	}
 }
