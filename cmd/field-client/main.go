@@ -19,6 +19,8 @@ type Config struct {
 	IncludeGlobs          []string                  `json:"include_globs"`
 	ExcludeDirs           []string                  `json:"exclude_dirs"`
 	DuplicateRunThreshold int                       `json:"duplicate_run_threshold"`
+	FallbackToLatestFile  *bool                     `json:"fallback_to_latest_file"`
+	Debug                 bool                      `json:"debug"`
 	StatusThresholds      analyzer.StatusThresholds `json:"status_thresholds"`
 }
 
@@ -62,6 +64,11 @@ func runAnalyzeDaily(args []string) {
 		fatal(errors.New("outbox_dir is required"))
 	}
 
+	fallback := true
+	if cfg.FallbackToLatestFile != nil {
+		fallback = *cfg.FallbackToLatestFile
+	}
+
 	analysisConfig := analyzer.Config{
 		SiteID:                cfg.SiteID,
 		DeviceID:              cfg.DeviceID,
@@ -70,6 +77,8 @@ func runAnalyzeDaily(args []string) {
 		IncludeGlobs:          cfg.IncludeGlobs,
 		ExcludeDirs:           cfg.ExcludeDirs,
 		DuplicateRunThreshold: cfg.DuplicateRunThreshold,
+		FallbackToLatestFile:  fallback,
+		Debug:                 cfg.Debug,
 		StatusThresholds:      cfg.StatusThresholds,
 	}
 

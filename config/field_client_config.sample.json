@@ -6,6 +6,8 @@
   "include_globs": ["GATE*", "WLS*", "PUMP*", "TEMP*"],
   "exclude_dirs": ["ALL", "PING", "SERVER"],
   "duplicate_run_threshold": 3,
+  "fallback_to_latest_file": true,
+  "debug": false,
   "status_thresholds": {
     "error_timeout": 3,
     "error_no_response": 3,

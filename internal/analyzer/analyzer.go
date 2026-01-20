@@ -19,6 +19,8 @@ type Config struct {
 	IncludeGlobs          []string
 	ExcludeDirs           []string
 	DuplicateRunThreshold int
+	FallbackToLatestFile  bool
+	Debug                 bool
 	StatusThresholds      StatusThresholds
 }
 
@@ -34,14 +36,14 @@ type StatusThresholds struct {
 }
 
 type Metrics struct {
-	Lines          int     `json:"lines"`
-	Timeout        int     `json:"timeout"`
-	NoResponse     int     `json:"no_response"`
-	ZeroData       int     `json:"zero_data"`
-	Duplicates     int     `json:"duplicates"`
-	UniqueRatioPct float64 `json:"unique_ratio_pct"`
-	TotalPayloads  int     `json:"-"`
-	UniquePayloads int     `json:"-"`
+	Lines          int      `json:"lines"`
+	Timeout        int      `json:"timeout"`
+	NoResponse     int      `json:"no_response"`
+	ZeroData       int      `json:"zero_data"`
+	Duplicates     int      `json:"duplicates"`
+	UniqueRatioPct *float64 `json:"unique_ratio_pct"`
+	TotalPayloads  int      `json:"-"`
+	UniquePayloads int      `json:"-"`
 }
 
 type Examples struct {
@@ -49,6 +51,7 @@ type Examples struct {
 	FirstNoResponseLine string `json:"first_no_response_line,omitempty"`
 	FirstZeroDataLine   string `json:"first_zero_data_line,omitempty"`
 	TopDuplicatePayload string `json:"top_duplicate_payload,omitempty"`
+	Note                string `json:"note,omitempty"`
 }
 
 type SensorResult struct {
@@ -139,11 +142,15 @@ func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorR
 	consecutive := 0
 	linesRead := 0
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name())
+	files, fileNotes, err := selectFiles(entries, dir, datePrefix, cfg.FallbackToLatestFile)
+	if err != nil {
+		return SensorResult{}, err
+	}
+	if cfg.Debug {
+		fmt.Printf("sensor=%s files=%d fallback=%t\n", sensorID, len(files), fileNotes.usedFallback)
+	}
+
+	for _, path := range files {
 		file, err := os.Open(path)
 		if err != nil {
 			return SensorResult{}, err
@@ -172,6 +179,12 @@ func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorR
 
 	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
 	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
+	if metrics.TotalPayloads == 0 {
+		examples.Note = "no payload for date"
+	}
+	if cfg.Debug {
+		fmt.Printf("sensor=%s lines=%d payloads=%d\n", sensorID, metrics.Lines, metrics.TotalPayloads)
+	}
 	status := evaluateStatus(metrics, cfg.StatusThresholds)
 
 	return SensorResult{
@@ -281,11 +294,12 @@ func isZeroPayload(payload string) bool {
 	return true
 }
 
-func calculateRatio(unique, total int) float64 {
+func calculateRatio(unique, total int) *float64 {
 	if total == 0 {
-		return 0
+		return nil
 	}
-	return float64(unique) / float64(total) * 100
+	value := float64(unique) / float64(total) * 100
+	return &value
 }
 
 func topDuplicatePayload(counts map[string]int) string {
@@ -388,6 +402,9 @@ func analyzeLines(lines []string, datePrefix string, cfg Config) (Metrics, Examp
 	}
 	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
 	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
+	if metrics.TotalPayloads == 0 {
+		examples.Note = "no payload for date"
+	}
 	return metrics, examples
 }
 
@@ -436,4 +453,55 @@ func updateMetrics(metrics Metrics, examples Examples, line string, cfg Config, 
 	}
 
 	return metrics, examples, lastPayload, consecutive
+}
+
+type fileSelectionNotes struct {
+	usedFallback bool
+}
+
+func selectFiles(entries []os.DirEntry, dir string, datePrefix string, fallback bool) ([]string, fileSelectionNotes, error) {
+	dateToken := datePrefix
+	var matched []string
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		files = append(files, path)
+		if strings.Contains(entry.Name(), dateToken) {
+			matched = append(matched, path)
+		}
+	}
+	sort.Strings(matched)
+	if len(matched) > 0 {
+		return matched, fileSelectionNotes{}, nil
+	}
+	if !fallback || len(files) == 0 {
+		return nil, fileSelectionNotes{}, nil
+	}
+	latest, err := latestFile(files)
+	if err != nil {
+		return nil, fileSelectionNotes{}, err
+	}
+	return []string{latest}, fileSelectionNotes{usedFallback: true}, nil
+}
+
+func latestFile(files []string) (string, error) {
+	var latest string
+	var latestTime time.Time
+	for _, path := range files {
+		info, err := os.Stat(path)
+		if err != nil {
+			return "", err
+		}
+		if latest == "" || info.ModTime().After(latestTime) {
+			latest = path
+			latestTime = info.ModTime()
+		}
+	}
+	if latest == "" {
+		return "", errors.New("no files available")
+	}
+	return latest, nil
 }

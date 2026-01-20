@@ -83,5 +83,6 @@ WantedBy=multi-user.target
 ## Notes
 
 - The analyzer scans sensor folders matching include globs (default: GATE*, WLS*, PUMP*, TEMP*) and skips excluded directories.
+- It prefers log files whose names include the target date (YYYY-MM-DD) and falls back to the latest file when none match.
 - The comparison window is ±3 seconds by default and configurable with `--window`.
 - SQLite uses `modernc.org/sqlite` for pure Go compatibility.
