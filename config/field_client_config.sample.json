@@ -7,23 +7,5 @@
   "exclude_dirs": ["ALL", "PING", "SERVER"],
   "duplicate_run_threshold": 3,
   "fallback_to_latest_file": true,
-  "debug": false,
-  "delay_threshold_ms": 2000,
-  "delay_threshold_ms_by_type": {
-    "GATE": 1000,
-    "WLS": 2000,
-    "PUMP": 2000,
-    "TEMP": 3000
-  },
-  "delay_max_gap_lines": 5,
-  "status_thresholds": {
-    "error_timeout": 3,
-    "error_no_response": 3,
-    "error_zero_data": 10,
-    "error_duplicates": 50,
-    "warning_timeout": 1,
-    "warning_no_response": 1,
-    "warning_zero_data": 1,
-    "warning_duplicates": 10
-  }
+  "debug": false
 }

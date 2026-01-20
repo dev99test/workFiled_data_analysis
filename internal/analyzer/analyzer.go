@@ -13,54 +13,32 @@ import (
 )
 
 type Config struct {
-	SiteID                 string
-	DeviceID               string
-	OutboxDir              string
-	LogRoot                string
-	IncludeGlobs           []string
-	ExcludeDirs            []string
-	DuplicateRunThreshold  int
-	FallbackToLatestFile   bool
-	Debug                  bool
-	DelayThresholdMs       int64
-	DelayMaxGapLines       int
-	DelayThresholdByTypeMs map[string]int64
-	StatusThresholds       StatusThresholds
-}
-
-type StatusThresholds struct {
-	ErrorTimeout      int
-	ErrorNoResponse   int
-	ErrorZeroData     int
-	ErrorDuplicates   int
-	WarningTimeout    int
-	WarningNoResponse int
-	WarningZeroData   int
-	WarningDuplicates int
+	SiteID                string
+	DeviceID              string
+	OutboxDir             string
+	LogRoot               string
+	IncludeGlobs          []string
+	ExcludeDirs           []string
+	DuplicateRunThreshold int
+	FallbackToLatestFile  bool
+	Debug                 bool
 }
 
 type Metrics struct {
-	Lines            int          `json:"-"`
-	Timeout          int          `json:"timeout"`
-	NoResponse       int          `json:"no_response"`
-	ZeroData         int          `json:"zero_data"`
-	Duplicates       int          `json:"duplicates"`
-	PairsTotal       int          `json:"pairs_total"`
-	MissingTotal     int          `json:"missing_total"`
-	DelayedSamples   int          `json:"delayed_samples"`
-	LastRcvAt        string       `json:"last_rcv_at"`
-	TimeRange        TimeRange    `json:"time_range"`
-	SampleCount      int          `json:"sample_count"`
-	ResponseTime     ResponseTime `json:"response_time"`
-	DelayThresholdMs int64        `json:"delay_threshold_ms"`
-	DelayMaxGapLines int          `json:"delay_max_gap_lines"`
-	UniqueRatioPct   *float64     `json:"unique_ratio_pct"`
-	WLSLastValueCm   *int         `json:"wls_last_value_cm,omitempty"`
-	WLSMinValueCm    *int         `json:"wls_min_value_cm,omitempty"`
-	WLSMaxValueCm    *int         `json:"wls_max_value_cm,omitempty"`
-	WLSTopValues     []WLSValue   `json:"wls_top_values,omitempty"`
-	TotalPayloads    int          `json:"-"`
-	UniquePayloads   int          `json:"-"`
+	Lines          int       `json:"-"`
+	Timeout        int       `json:"timeout"`
+	NoResponse     int       `json:"no_response"`
+	ZeroData       int       `json:"zero_data"`
+	Duplicates     int       `json:"duplicates"`
+	TimeRange      TimeRange `json:"time_range"`
+	SndCount       int       `json:"snd_count"`
+	RcvCount       int       `json:"rcv_count"`
+	UniqueRatioPct *float64  `json:"unique_ratio_pct"`
+	WLSLastValueCm *int      `json:"wls_last_value_cm,omitempty"`
+	WLSMinValueCm  *int      `json:"wls_min_value_cm,omitempty"`
+	WLSMaxValueCm  *int      `json:"wls_max_value_cm,omitempty"`
+	TotalPayloads  int       `json:"-"`
+	UniquePayloads int       `json:"-"`
 }
 
 type Examples struct {
@@ -71,27 +49,14 @@ type Examples struct {
 	Note                string `json:"note,omitempty"`
 }
 
-type ResponseTime struct {
-	MinMs    *int64 `json:"min_ms"`
-	AvgMs    *int64 `json:"avg_ms"`
-	MaxMs    *int64 `json:"max_ms"`
-	MaxHuman string `json:"max_human,omitempty"`
-}
-
 type TimeRange struct {
 	From string `json:"from,omitempty"`
 	To   string `json:"to,omitempty"`
 }
 
-type WLSValue struct {
-	Value int `json:"value"`
-	Count int `json:"count"`
-}
-
 type SensorResult struct {
 	SensorID   string   `json:"sensor_id"`
 	SensorType string   `json:"sensor_type"`
-	Status     string   `json:"status"`
 	Metrics    Metrics  `json:"metrics"`
 	Examples   Examples `json:"examples"`
 }
@@ -122,7 +87,6 @@ func AnalyzeDaily(cfg Config, date string, maxLines int) (Summary, error) {
 	if cfg.DuplicateRunThreshold <= 0 {
 		cfg.DuplicateRunThreshold = 3
 	}
-	cfg = withDefaultThresholds(cfg)
 
 	datePrefix, err := normalizeDatePrefix(date)
 	if err != nil {
@@ -158,7 +122,6 @@ func AnalyzeDaily(cfg Config, date string, maxLines int) (Summary, error) {
 }
 
 func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorResult, error) {
-	cfg = withDefaultThresholds(cfg)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return SensorResult{}, err
@@ -173,9 +136,7 @@ func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorR
 	metrics := Metrics{}
 	examples := Examples{}
 	payloadCounts := map[string]int{}
-	state := SensorState{
-		WLSCounts: map[int]int{},
-	}
+	state := SensorState{}
 	var lastPayload string
 	consecutive := 0
 	linesRead := 0
@@ -216,16 +177,14 @@ func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorR
 		}
 	}
 
-	metrics, examples = finalizeMetrics(metrics, examples, state, payloadCounts, cfg)
+	metrics, examples = finalizeMetrics(metrics, examples, state, payloadCounts, datePrefix)
 	if cfg.Debug {
 		fmt.Printf("sensor=%s lines=%d payloads=%d\n", sensorID, metrics.Lines, metrics.TotalPayloads)
 	}
-	status := evaluateStatus(metrics, cfg.StatusThresholds)
 
 	return SensorResult{
 		SensorID:   sensorID,
 		SensorType: sensorType,
-		Status:     status,
 		Metrics:    metrics,
 		Examples:   examples,
 	}, nil
@@ -297,17 +256,6 @@ func sensorTypeFromID(sensorID string) string {
 	}
 }
 
-func hasNoResponse(line string) bool {
-	lower := strings.ToLower(line)
-	if strings.Contains(lower, "no response") {
-		return true
-	}
-	if strings.Contains(lower, "응답없음") || strings.Contains(lower, "응답 없음") {
-		return true
-	}
-	return false
-}
-
 func extractPayload(line string) (string, bool) {
 	idx := strings.Index(strings.ToLower(line), "rcv:")
 	if idx == -1 {
@@ -356,59 +304,6 @@ func topDuplicatePayload(counts map[string]int) string {
 	return top
 }
 
-func evaluateStatus(metrics Metrics, thresholds StatusThresholds) string {
-	if metrics.Timeout >= thresholds.ErrorTimeout ||
-		metrics.NoResponse >= thresholds.ErrorNoResponse ||
-		metrics.ZeroData >= thresholds.ErrorZeroData ||
-		metrics.Duplicates >= thresholds.ErrorDuplicates {
-		return "ERROR"
-	}
-	if metrics.Timeout >= thresholds.WarningTimeout ||
-		metrics.NoResponse >= thresholds.WarningNoResponse ||
-		metrics.ZeroData >= thresholds.WarningZeroData ||
-		metrics.Duplicates >= thresholds.WarningDuplicates {
-		return "WARNING"
-	}
-	return "NORMAL"
-}
-
-func withDefaultThresholds(cfg Config) Config {
-	if cfg.StatusThresholds.ErrorTimeout == 0 {
-		cfg.StatusThresholds.ErrorTimeout = 3
-	}
-	if cfg.StatusThresholds.ErrorNoResponse == 0 {
-		cfg.StatusThresholds.ErrorNoResponse = 3
-	}
-	if cfg.StatusThresholds.ErrorZeroData == 0 {
-		cfg.StatusThresholds.ErrorZeroData = 10
-	}
-	if cfg.StatusThresholds.ErrorDuplicates == 0 {
-		cfg.StatusThresholds.ErrorDuplicates = 50
-	}
-	if cfg.StatusThresholds.WarningTimeout == 0 {
-		cfg.StatusThresholds.WarningTimeout = 1
-	}
-	if cfg.StatusThresholds.WarningNoResponse == 0 {
-		cfg.StatusThresholds.WarningNoResponse = 1
-	}
-	if cfg.StatusThresholds.WarningZeroData == 0 {
-		cfg.StatusThresholds.WarningZeroData = 1
-	}
-	if cfg.StatusThresholds.WarningDuplicates == 0 {
-		cfg.StatusThresholds.WarningDuplicates = 10
-	}
-	if cfg.DelayThresholdMs == 0 {
-		cfg.DelayThresholdMs = 2000
-	}
-	if cfg.DelayMaxGapLines == 0 {
-		cfg.DelayMaxGapLines = 5
-	}
-	if cfg.DelayThresholdByTypeMs == nil {
-		cfg.DelayThresholdByTypeMs = map[string]int64{}
-	}
-	return cfg
-}
-
 func buildTopIssues(results []SensorResult) []TopIssue {
 	var issues []TopIssue
 	for _, result := range results {
@@ -440,13 +335,10 @@ func buildTopIssues(results []SensorResult) []TopIssue {
 }
 
 func analyzeLines(lines []string, datePrefix string, sensorType string, cfg Config) (Metrics, Examples) {
-	cfg = withDefaultThresholds(cfg)
 	metrics := Metrics{}
 	examples := Examples{}
 	payloadCounts := map[string]int{}
-	state := SensorState{
-		WLSCounts: map[int]int{},
-	}
+	state := SensorState{}
 	var lastPayload string
 	consecutive := 0
 	for _, line := range lines {
@@ -456,17 +348,11 @@ func analyzeLines(lines []string, datePrefix string, sensorType string, cfg Conf
 		}
 		metrics, examples, lastPayload, consecutive, state = updateMetrics(metrics, examples, trimmed, sensorType, cfg, payloadCounts, lastPayload, consecutive, state)
 	}
-	return finalizeMetrics(metrics, examples, state, payloadCounts, cfg)
+	return finalizeMetrics(metrics, examples, state, payloadCounts, datePrefix)
 }
 
 func updateMetrics(metrics Metrics, examples Examples, line string, sensorType string, cfg Config, payloadCounts map[string]int, lastPayload string, consecutive int, state SensorState) (Metrics, Examples, string, int, SensorState) {
 	metrics.Lines++
-	if metrics.DelayThresholdMs == 0 {
-		metrics.DelayThresholdMs = delayThresholdMs(cfg, sensorType)
-	}
-	if metrics.DelayMaxGapLines == 0 {
-		metrics.DelayMaxGapLines = cfg.DelayMaxGapLines
-	}
 	trimmed := strings.TrimLeft(line, " \t")
 	lower := strings.ToLower(trimmed)
 	lineTime, hasTime := parseLineTime(trimmed)
@@ -476,19 +362,8 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 			examples.FirstTimeoutLine = line
 		}
 	}
-	if hasNoResponse(line) {
-		metrics.NoResponse++
-		if examples.FirstNoResponseLine == "" {
-			examples.FirstNoResponseLine = line
-		}
-	}
-
 	if hasTime && strings.Contains(lower, "snd:") {
-		state.EventCount++
 		state = updateTimeRange(state, lineTime)
-		if state.HasPending {
-			metrics.MissingTotal++
-		}
 		state.PendingSentAt = lineTime
 		state.PendingLine = metrics.Lines
 		state.HasPending = true
@@ -496,21 +371,10 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 	}
 
 	if hasTime && strings.Contains(lower, "rcv:") {
-		state.EventCount++
 		state = updateTimeRange(state, lineTime)
 		state.LastRcvAt = lineTime
 		state.RcvCount++
-		if state.HasPending {
-			latency := lineTime.Sub(state.PendingSentAt).Milliseconds()
-			lineGap := metrics.Lines - state.PendingLine
-			metrics.PairsTotal++
-			delayThreshold := delayThresholdMs(cfg, sensorType)
-			if latency >= delayThreshold || lineGap > cfg.DelayMaxGapLines {
-				metrics.DelayedSamples++
-			}
-			state.Latencies = append(state.Latencies, latency)
-			state.HasPending = false
-		}
+		state.HasPending = false
 	}
 
 	payload, ok := extractPayload(trimmed)
@@ -538,7 +402,6 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 		}
 		if strings.EqualFold(sensorType, "WLS") {
 			if value, ok := parseWLSValue(payload); ok {
-				state.WLSCounts[value]++
 				state.WLSLast = &value
 				if state.WLSMin == nil || value < *state.WLSMin {
 					state.WLSMin = &value
@@ -611,24 +474,18 @@ type SensorState struct {
 	PendingSentAt  time.Time
 	PendingLine    int
 	HasPending     bool
-	Latencies      []int64
 	LastRcvAt      time.Time
 	TimeRangeStart time.Time
 	TimeRangeEnd   time.Time
 	HasTimeRange   bool
 	SndCount       int
 	RcvCount       int
-	EventCount     int
-	WLSCounts      map[int]int
 	WLSLast        *int
 	WLSMin         *int
 	WLSMax         *int
 }
 
-func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payloadCounts map[string]int, cfg Config) (Metrics, Examples) {
-	if state.HasPending {
-		metrics.MissingTotal++
-	}
+func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payloadCounts map[string]int, datePrefix string) (Metrics, Examples) {
 	if !state.LastRcvAt.IsZero() {
 		metrics.LastRcvAt = state.LastRcvAt.Format(time.RFC3339)
 	}
@@ -638,52 +495,37 @@ func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payl
 			To:   state.TimeRangeEnd.Format(time.RFC3339),
 		}
 	} else {
-		if examples.Note == "" {
+		if metrics.Lines > 0 {
+			estimated, ok := estimateRangeFromDate(datePrefix)
+			if ok {
+				metrics.TimeRange = estimated
+				if examples.Note == "" {
+					examples.Note = "time_range estimated from filename"
+				}
+			}
+		} else if examples.Note == "" {
 			examples.Note = "no timestamps found for date"
 		}
 	}
-	metrics.SampleCount = state.EventCount
+	metrics.SndCount = state.SndCount
+	metrics.RcvCount = state.RcvCount
+	if state.SndCount > 0 && state.RcvCount == 0 {
+		metrics.NoResponse = state.SndCount
+		if examples.Note == "" {
+			examples.Note = "snd exists but no rcv found; treated as no_response"
+		}
+	}
 	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
 	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
-	metrics.ResponseTime = calculateResponseTime(state.Latencies)
-	metrics.DelayMaxGapLines = cfg.DelayMaxGapLines
-	if len(state.WLSCounts) > 0 {
-		metrics.WLSLastValueCm = state.WLSLast
-		metrics.WLSMinValueCm = state.WLSMin
-		metrics.WLSMaxValueCm = state.WLSMax
-		metrics.WLSTopValues = topWLSValues(state.WLSCounts)
-	}
+	metrics.WLSLastValueCm = state.WLSLast
+	metrics.WLSMinValueCm = state.WLSMin
+	metrics.WLSMaxValueCm = state.WLSMax
 	if metrics.TotalPayloads == 0 {
 		if examples.Note == "" {
 			examples.Note = "no payload for date"
 		}
 	}
-	if metrics.PairsTotal == 0 && metrics.LastRcvAt == "" {
-		if examples.Note == "" {
-			examples.Note = "no rcv events found for date; cannot compute response time"
-		}
-	}
 	return metrics, examples
-}
-
-func calculateResponseTime(latencies []int64) ResponseTime {
-	if len(latencies) == 0 {
-		return ResponseTime{}
-	}
-	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
-	min := latencies[0]
-	max := latencies[len(latencies)-1]
-	sum := int64(0)
-	for _, value := range latencies {
-		sum += value
-	}
-	avg := int64(float64(sum) / float64(len(latencies)))
-	return ResponseTime{
-		MinMs:    &min,
-		AvgMs:    &avg,
-		MaxMs:    &max,
-		MaxHuman: formatDuration(max),
-	}
 }
 
 func parseLineTime(line string) (time.Time, bool) {
@@ -718,26 +560,17 @@ func updateTimeRange(state SensorState, value time.Time) SensorState {
 	return state
 }
 
-func delayThresholdMs(cfg Config, sensorType string) int64 {
-	if sensorType != "" && cfg.DelayThresholdByTypeMs != nil {
-		if value, ok := cfg.DelayThresholdByTypeMs[strings.ToUpper(sensorType)]; ok {
-			return value
-		}
+func estimateRangeFromDate(datePrefix string) (TimeRange, bool) {
+	parsed, err := time.ParseInLocation("2006-01-02", datePrefix, time.Local)
+	if err != nil {
+		return TimeRange{}, false
 	}
-	return cfg.DelayThresholdMs
-}
-
-func formatDuration(ms int64) string {
-	if ms < 1000 {
-		return fmt.Sprintf("%dms", ms)
-	}
-	seconds := ms / 1000
-	if seconds < 60 {
-		return fmt.Sprintf("%.1fs", float64(ms)/1000)
-	}
-	minutes := seconds / 60
-	remSeconds := seconds % 60
-	return fmt.Sprintf("%dm %ds", minutes, remSeconds)
+	start := parsed
+	end := parsed.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+	return TimeRange{
+		From: start.Format(time.RFC3339),
+		To:   end.Format(time.RFC3339),
+	}, true
 }
 
 func parseWLSValue(payload string) (int, bool) {
@@ -749,6 +582,9 @@ func parseWLSValue(payload string) (int, bool) {
 		return 0, false
 	}
 	value := int(bytes[4])<<8 + int(bytes[5])
+	if value > 96 {
+		return 0, false
+	}
 	return value, true
 }
 
@@ -787,21 +623,4 @@ func parsePayloadBytes(payload string) ([]byte, bool) {
 
 func parseUint(value string, base int) (uint64, error) {
 	return strconv.ParseUint(value, base, 8)
-}
-
-func topWLSValues(counts map[int]int) []WLSValue {
-	values := make([]WLSValue, 0, len(counts))
-	for value, count := range counts {
-		values = append(values, WLSValue{Value: value, Count: count})
-	}
-	sort.Slice(values, func(i, j int) bool {
-		if values[i].Count == values[j].Count {
-			return values[i].Value < values[j].Value
-		}
-		return values[i].Count > values[j].Count
-	})
-	if len(values) > 5 {
-		values = values[:5]
-	}
-	return values
 }

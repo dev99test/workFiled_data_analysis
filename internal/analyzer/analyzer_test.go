@@ -109,41 +109,20 @@ func TestAnalyzeSensorDirFiltersByDate(t *testing.T) {
 	}
 }
 
-func TestSndRcvPairsAndLatency(t *testing.T) {
+func TestNoResponseCountsSndOnly(t *testing.T) {
 	cfg := Config{
 		DuplicateRunThreshold: 3,
-		DelayThresholdMs:      2000,
-		DelayMaxGapLines:      5,
 	}
-	metrics, _ := analyzeLines([]string{
-		"2026-01-19 00:00:01.000 snd: STATUS",
-		"2026-01-19 00:00:02.000 rcv: (01)",
-	}, "2026-01-19", "GATE", cfg)
-
-	if metrics.PairsTotal != 1 {
-		t.Fatalf("expected pairs_total 1, got %d", metrics.PairsTotal)
-	}
-	if metrics.DelayedSamples != 0 {
-		t.Fatalf("expected delayed_samples 0, got %d", metrics.DelayedSamples)
-	}
-	if metrics.ResponseTime.MinMs == nil || *metrics.ResponseTime.MinMs != 1000 {
-		t.Fatalf("expected min latency 1000ms, got %+v", metrics.ResponseTime.MinMs)
-	}
-}
-
-func TestMissingWhenNextSndArrives(t *testing.T) {
-	cfg := Config{
-		DuplicateRunThreshold: 3,
-		DelayThresholdMs:      2000,
-		DelayMaxGapLines:      5,
-	}
-	metrics, _ := analyzeLines([]string{
+	metrics, examples := analyzeLines([]string{
 		"2026-01-19 00:00:01.000 snd: STATUS",
 		"2026-01-19 00:00:02.000 snd: STATUS",
 	}, "2026-01-19", "GATE", cfg)
 
-	if metrics.MissingTotal != 2 {
-		t.Fatalf("expected missing_total 2 (overwrite + end), got %d", metrics.MissingTotal)
+	if metrics.NoResponse != 2 {
+		t.Fatalf("expected no_response 2, got %d", metrics.NoResponse)
+	}
+	if examples.Note == "" {
+		t.Fatalf("expected note for no_response")
 	}
 }
 
@@ -156,13 +135,13 @@ func TestParseWLSValue(t *testing.T) {
 		"2026-01-19 00:00:02.000 rcv: (FA, FF, 07, 15, 00, 61, DD, DD, FF, 88, 76)",
 	}, "2026-01-19", "WLS", cfg)
 
-	if metrics.WLSLastValueCm == nil || *metrics.WLSLastValueCm != 97 {
-		t.Fatalf("expected last value 97, got %+v", metrics.WLSLastValueCm)
+	if metrics.WLSLastValueCm == nil || *metrics.WLSLastValueCm != 96 {
+		t.Fatalf("expected last value 96, got %+v", metrics.WLSLastValueCm)
 	}
 	if metrics.WLSMinValueCm == nil || *metrics.WLSMinValueCm != 96 {
 		t.Fatalf("expected min value 96, got %+v", metrics.WLSMinValueCm)
 	}
-	if metrics.WLSMaxValueCm == nil || *metrics.WLSMaxValueCm != 97 {
-		t.Fatalf("expected max value 97, got %+v", metrics.WLSMaxValueCm)
+	if metrics.WLSMaxValueCm == nil || *metrics.WLSMaxValueCm != 96 {
+		t.Fatalf("expected max value 96, got %+v", metrics.WLSMaxValueCm)
 	}
 }

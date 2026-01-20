@@ -12,19 +12,15 @@ import (
 )
 
 type Config struct {
-	SiteID                 string                    `json:"site_id"`
-	DeviceID               string                    `json:"device_id"`
-	OutboxDir              string                    `json:"outbox_dir"`
-	LogRoot                string                    `json:"log_root"`
-	IncludeGlobs           []string                  `json:"include_globs"`
-	ExcludeDirs            []string                  `json:"exclude_dirs"`
-	DuplicateRunThreshold  int                       `json:"duplicate_run_threshold"`
-	FallbackToLatestFile   *bool                     `json:"fallback_to_latest_file"`
-	Debug                  bool                      `json:"debug"`
-	DelayThresholdMs       int64                     `json:"delay_threshold_ms"`
-	DelayMaxGapLines       int                       `json:"delay_max_gap_lines"`
-	DelayThresholdByTypeMs map[string]int64          `json:"delay_threshold_ms_by_type"`
-	StatusThresholds       analyzer.StatusThresholds `json:"status_thresholds"`
+	SiteID                string   `json:"site_id"`
+	DeviceID              string   `json:"device_id"`
+	OutboxDir             string   `json:"outbox_dir"`
+	LogRoot               string   `json:"log_root"`
+	IncludeGlobs          []string `json:"include_globs"`
+	ExcludeDirs           []string `json:"exclude_dirs"`
+	DuplicateRunThreshold int      `json:"duplicate_run_threshold"`
+	FallbackToLatestFile  *bool    `json:"fallback_to_latest_file"`
+	Debug                 bool     `json:"debug"`
 }
 
 func main() {
@@ -73,19 +69,15 @@ func runAnalyzeDaily(args []string) {
 	}
 
 	analysisConfig := analyzer.Config{
-		SiteID:                 cfg.SiteID,
-		DeviceID:               cfg.DeviceID,
-		OutboxDir:              cfg.OutboxDir,
-		LogRoot:                cfg.LogRoot,
-		IncludeGlobs:           cfg.IncludeGlobs,
-		ExcludeDirs:            cfg.ExcludeDirs,
-		DuplicateRunThreshold:  cfg.DuplicateRunThreshold,
-		FallbackToLatestFile:   fallback,
-		Debug:                  cfg.Debug,
-		DelayThresholdMs:       cfg.DelayThresholdMs,
-		DelayMaxGapLines:       cfg.DelayMaxGapLines,
-		DelayThresholdByTypeMs: cfg.DelayThresholdByTypeMs,
-		StatusThresholds:       cfg.StatusThresholds,
+		SiteID:                cfg.SiteID,
+		DeviceID:              cfg.DeviceID,
+		OutboxDir:             cfg.OutboxDir,
+		LogRoot:               cfg.LogRoot,
+		IncludeGlobs:          cfg.IncludeGlobs,
+		ExcludeDirs:           cfg.ExcludeDirs,
+		DuplicateRunThreshold: cfg.DuplicateRunThreshold,
+		FallbackToLatestFile:  fallback,
+		Debug:                 cfg.Debug,
 	}
 
 	summary, err := analyzer.AnalyzeDaily(analysisConfig, *dateStr, *maxLines)
