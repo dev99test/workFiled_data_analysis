@@ -33,7 +33,6 @@ type Metrics struct {
 	TimeRange      TimeRange `json:"time_range"`
 	SndCount       int       `json:"snd_count"`
 	RcvCount       int       `json:"rcv_count"`
-	UniqueRatioPct *float64  `json:"unique_ratio_pct"`
 	WLSLastValueCm *int      `json:"wls_last_value_cm,omitempty"`
 	WLSMinValueCm  *int      `json:"wls_min_value_cm,omitempty"`
 	WLSMaxValueCm  *int      `json:"wls_max_value_cm,omitempty"`
@@ -284,14 +283,6 @@ func isZeroPayload(payload string) bool {
 	return true
 }
 
-func calculateRatio(unique, total int) *float64 {
-	if total == 0 {
-		return nil
-	}
-	value := float64(unique) / float64(total) * 100
-	return &value
-}
-
 func topDuplicatePayload(counts map[string]int) string {
 	max := 0
 	var top string
@@ -372,7 +363,6 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 
 	if hasTime && strings.Contains(lower, "rcv:") {
 		state = updateTimeRange(state, lineTime)
-		state.LastRcvAt = lineTime
 		state.RcvCount++
 		state.HasPending = false
 	}
@@ -474,7 +464,6 @@ type SensorState struct {
 	PendingSentAt  time.Time
 	PendingLine    int
 	HasPending     bool
-	LastRcvAt      time.Time
 	TimeRangeStart time.Time
 	TimeRangeEnd   time.Time
 	HasTimeRange   bool
@@ -486,9 +475,6 @@ type SensorState struct {
 }
 
 func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payloadCounts map[string]int, datePrefix string) (Metrics, Examples) {
-	if !state.LastRcvAt.IsZero() {
-		metrics.LastRcvAt = state.LastRcvAt.Format(time.RFC3339)
-	}
 	if state.HasTimeRange {
 		metrics.TimeRange = TimeRange{
 			From: state.TimeRangeStart.Format(time.RFC3339),
@@ -515,7 +501,6 @@ func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payl
 			examples.Note = "snd exists but no rcv found; treated as no_response"
 		}
 	}
-	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
 	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
 	metrics.WLSLastValueCm = state.WLSLast
 	metrics.WLSMinValueCm = state.WLSMin

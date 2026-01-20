@@ -41,21 +41,6 @@ func TestZeroDataAndTimeout(t *testing.T) {
 	}
 }
 
-func TestUniqueRatioNilWhenNoPayloads(t *testing.T) {
-	cfg := Config{DuplicateRunThreshold: 3}
-	metrics, examples := analyzeLines([]string{
-		"2026-01-19 00:00:01.000 timeout while reading",
-		"2026-01-19 00:00:02.000 STATUS OK",
-	}, "2026-01-19", "GATE", cfg)
-
-	if metrics.UniqueRatioPct != nil {
-		t.Fatalf("expected unique_ratio_pct to be nil when no payloads")
-	}
-	if examples.Note == "" {
-		t.Fatalf("expected note when no payloads")
-	}
-}
-
 func TestSelectFilesByDate(t *testing.T) {
 	root := t.TempDir()
 	sensorDir := filepath.Join(root, "WLS1")
