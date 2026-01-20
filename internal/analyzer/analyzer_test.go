@@ -15,7 +15,7 @@ func TestDuplicateCounting(t *testing.T) {
 		"2026-01-19 00:00:03.000 rcv: (01)",
 		"2026-01-19 00:00:04.000 rcv: (01)",
 		"2026-01-19 00:00:05.000 rcv: (02)",
-	}, "2026-01-19", cfg)
+	}, "2026-01-19", "GATE", cfg)
 
 	if metrics.Duplicates != 2 {
 		t.Fatalf("expected duplicates 2, got %d", metrics.Duplicates)
@@ -28,7 +28,7 @@ func TestZeroDataAndTimeout(t *testing.T) {
 		"2026-01-19 00:00:01.000 timeout while reading",
 		"2026-01-19 00:00:02.000 rcv: (00)",
 		"2026-01-19 00:00:03.000 rcv: (00, 00, 00)",
-	}, "2026-01-19", cfg)
+	}, "2026-01-19", "GATE", cfg)
 
 	if metrics.Timeout != 1 {
 		t.Fatalf("expected timeout 1, got %d", metrics.Timeout)
@@ -46,7 +46,7 @@ func TestUniqueRatioNilWhenNoPayloads(t *testing.T) {
 	metrics, examples := analyzeLines([]string{
 		"2026-01-19 00:00:01.000 timeout while reading",
 		"2026-01-19 00:00:02.000 STATUS OK",
-	}, "2026-01-19", cfg)
+	}, "2026-01-19", "GATE", cfg)
 
 	if metrics.UniqueRatioPct != nil {
 		t.Fatalf("expected unique_ratio_pct to be nil when no payloads")
@@ -106,5 +106,67 @@ func TestAnalyzeSensorDirFiltersByDate(t *testing.T) {
 	}
 	if result.Metrics.Lines != 2 {
 		t.Fatalf("expected 2 lines for date, got %d", result.Metrics.Lines)
+	}
+}
+
+func TestSndRcvPairsAndLatency(t *testing.T) {
+	cfg := Config{
+		DuplicateRunThreshold: 3,
+		DelayThresholdMs:      2000,
+		DelayMaxGapLines:      5,
+	}
+	metrics, _ := analyzeLines([]string{
+		"2026-01-19 00:00:01.000 snd: STATUS",
+		"2026-01-19 00:00:02.000 rcv: (01)",
+	}, "2026-01-19", "GATE", cfg)
+
+	if metrics.PairsTotal != 1 {
+		t.Fatalf("expected pairs_total 1, got %d", metrics.PairsTotal)
+	}
+	if metrics.DelayedTotal != 0 {
+		t.Fatalf("expected delayed_total 0, got %d", metrics.DelayedTotal)
+	}
+	if metrics.LatencyMs.Min == nil || *metrics.LatencyMs.Min != 1000 {
+		t.Fatalf("expected min latency 1000ms, got %+v", metrics.LatencyMs.Min)
+	}
+}
+
+func TestMissingWhenNextSndArrives(t *testing.T) {
+	cfg := Config{
+		DuplicateRunThreshold: 3,
+		DelayThresholdMs:      2000,
+		DelayMaxGapLines:      5,
+	}
+	metrics, _ := analyzeLines([]string{
+		"2026-01-19 00:00:01.000 snd: STATUS",
+		"2026-01-19 00:00:02.000 snd: STATUS",
+	}, "2026-01-19", "GATE", cfg)
+
+	if metrics.MissingTotal != 2 {
+		t.Fatalf("expected missing_total 2 (overwrite + end), got %d", metrics.MissingTotal)
+	}
+}
+
+func TestParseWLSValue(t *testing.T) {
+	cfg := Config{
+		DuplicateRunThreshold:  3,
+		WLSValueByteIndexStart: 0,
+		WLSValueByteLen:        2,
+		WLSEndian:              "big",
+		WLSValueScale:          1.0,
+	}
+	metrics, _ := analyzeLines([]string{
+		"2026-01-19 00:00:01.000 rcv: (00, 0A)",
+		"2026-01-19 00:00:02.000 rcv: (00, 0B)",
+	}, "2026-01-19", "WLS", cfg)
+
+	if metrics.WLSLastValueCm == nil || *metrics.WLSLastValueCm != 11 {
+		t.Fatalf("expected last value 11, got %+v", metrics.WLSLastValueCm)
+	}
+	if metrics.WLSMinValueCm == nil || *metrics.WLSMinValueCm != 10 {
+		t.Fatalf("expected min value 10, got %+v", metrics.WLSMinValueCm)
+	}
+	if metrics.WLSMaxValueCm == nil || *metrics.WLSMaxValueCm != 11 {
+		t.Fatalf("expected max value 11, got %+v", metrics.WLSMaxValueCm)
 	}
 }

@@ -12,16 +12,23 @@ import (
 )
 
 type Config struct {
-	SiteID                string                    `json:"site_id"`
-	DeviceID              string                    `json:"device_id"`
-	OutboxDir             string                    `json:"outbox_dir"`
-	LogRoot               string                    `json:"log_root"`
-	IncludeGlobs          []string                  `json:"include_globs"`
-	ExcludeDirs           []string                  `json:"exclude_dirs"`
-	DuplicateRunThreshold int                       `json:"duplicate_run_threshold"`
-	FallbackToLatestFile  *bool                     `json:"fallback_to_latest_file"`
-	Debug                 bool                      `json:"debug"`
-	StatusThresholds      analyzer.StatusThresholds `json:"status_thresholds"`
+	SiteID                 string                    `json:"site_id"`
+	DeviceID               string                    `json:"device_id"`
+	OutboxDir              string                    `json:"outbox_dir"`
+	LogRoot                string                    `json:"log_root"`
+	IncludeGlobs           []string                  `json:"include_globs"`
+	ExcludeDirs            []string                  `json:"exclude_dirs"`
+	DuplicateRunThreshold  int                       `json:"duplicate_run_threshold"`
+	FallbackToLatestFile   *bool                     `json:"fallback_to_latest_file"`
+	Debug                  bool                      `json:"debug"`
+	ImmediateMaxGapLines   int                       `json:"immediate_max_gap_lines"`
+	DelayThresholdMs       int64                     `json:"delay_threshold_ms"`
+	DelayMaxGapLines       int                       `json:"delay_max_gap_lines"`
+	WLSValueByteIndexStart int                       `json:"wls_value_byte_index_start"`
+	WLSValueByteLen        int                       `json:"wls_value_byte_len"`
+	WLSEndian              string                    `json:"wls_endian"`
+	WLSValueScale          float64                   `json:"wls_value_scale"`
+	StatusThresholds       analyzer.StatusThresholds `json:"status_thresholds"`
 }
 
 func main() {
@@ -70,16 +77,23 @@ func runAnalyzeDaily(args []string) {
 	}
 
 	analysisConfig := analyzer.Config{
-		SiteID:                cfg.SiteID,
-		DeviceID:              cfg.DeviceID,
-		OutboxDir:             cfg.OutboxDir,
-		LogRoot:               cfg.LogRoot,
-		IncludeGlobs:          cfg.IncludeGlobs,
-		ExcludeDirs:           cfg.ExcludeDirs,
-		DuplicateRunThreshold: cfg.DuplicateRunThreshold,
-		FallbackToLatestFile:  fallback,
-		Debug:                 cfg.Debug,
-		StatusThresholds:      cfg.StatusThresholds,
+		SiteID:                 cfg.SiteID,
+		DeviceID:               cfg.DeviceID,
+		OutboxDir:              cfg.OutboxDir,
+		LogRoot:                cfg.LogRoot,
+		IncludeGlobs:           cfg.IncludeGlobs,
+		ExcludeDirs:            cfg.ExcludeDirs,
+		DuplicateRunThreshold:  cfg.DuplicateRunThreshold,
+		FallbackToLatestFile:   fallback,
+		Debug:                  cfg.Debug,
+		ImmediateMaxGapLines:   cfg.ImmediateMaxGapLines,
+		DelayThresholdMs:       cfg.DelayThresholdMs,
+		DelayMaxGapLines:       cfg.DelayMaxGapLines,
+		WLSValueByteIndexStart: cfg.WLSValueByteIndexStart,
+		WLSValueByteLen:        cfg.WLSValueByteLen,
+		WLSEndian:              cfg.WLSEndian,
+		WLSValueScale:          cfg.WLSValueScale,
+		StatusThresholds:       cfg.StatusThresholds,
 	}
 
 	summary, err := analyzer.AnalyzeDaily(analysisConfig, *dateStr, *maxLines)

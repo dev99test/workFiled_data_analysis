@@ -7,21 +7,29 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type Config struct {
-	SiteID                string
-	DeviceID              string
-	OutboxDir             string
-	LogRoot               string
-	IncludeGlobs          []string
-	ExcludeDirs           []string
-	DuplicateRunThreshold int
-	FallbackToLatestFile  bool
-	Debug                 bool
-	StatusThresholds      StatusThresholds
+	SiteID                 string
+	DeviceID               string
+	OutboxDir              string
+	LogRoot                string
+	IncludeGlobs           []string
+	ExcludeDirs            []string
+	DuplicateRunThreshold  int
+	FallbackToLatestFile   bool
+	Debug                  bool
+	ImmediateMaxGapLines   int
+	DelayThresholdMs       int64
+	DelayMaxGapLines       int
+	WLSValueByteIndexStart int
+	WLSValueByteLen        int
+	WLSEndian              string
+	WLSValueScale          float64
+	StatusThresholds       StatusThresholds
 }
 
 type StatusThresholds struct {
@@ -36,14 +44,24 @@ type StatusThresholds struct {
 }
 
 type Metrics struct {
-	Lines          int      `json:"lines"`
-	Timeout        int      `json:"timeout"`
-	NoResponse     int      `json:"no_response"`
-	ZeroData       int      `json:"zero_data"`
-	Duplicates     int      `json:"duplicates"`
-	UniqueRatioPct *float64 `json:"unique_ratio_pct"`
-	TotalPayloads  int      `json:"-"`
-	UniquePayloads int      `json:"-"`
+	Lines          int           `json:"lines"`
+	Timeout        int           `json:"timeout"`
+	NoResponse     int           `json:"no_response"`
+	ZeroData       int           `json:"zero_data"`
+	Duplicates     int           `json:"duplicates"`
+	PairsTotal     int           `json:"pairs_total"`
+	MissingTotal   int           `json:"missing_total"`
+	DelayedTotal   int           `json:"delayed_total"`
+	LastRcvAt      string        `json:"last_rcv_at"`
+	LatencyMs      LatencyStats  `json:"latency_ms"`
+	LineGap        LineGapConfig `json:"line_gap"`
+	UniqueRatioPct *float64      `json:"unique_ratio_pct"`
+	WLSLastValueCm *int          `json:"wls_last_value_cm,omitempty"`
+	WLSMinValueCm  *int          `json:"wls_min_value_cm,omitempty"`
+	WLSMaxValueCm  *int          `json:"wls_max_value_cm,omitempty"`
+	WLSTopValues   []WLSValue    `json:"wls_top_values,omitempty"`
+	TotalPayloads  int           `json:"-"`
+	UniquePayloads int           `json:"-"`
 }
 
 type Examples struct {
@@ -52,6 +70,23 @@ type Examples struct {
 	FirstZeroDataLine   string `json:"first_zero_data_line,omitempty"`
 	TopDuplicatePayload string `json:"top_duplicate_payload,omitempty"`
 	Note                string `json:"note,omitempty"`
+}
+
+type LatencyStats struct {
+	Min *int64   `json:"min"`
+	Avg *float64 `json:"avg"`
+	P95 *int64   `json:"p95"`
+	Max *int64   `json:"max"`
+}
+
+type LineGapConfig struct {
+	ImmediateMaxGapLines int `json:"immediate_max_gap_lines"`
+	DelayMaxGapLines     int `json:"delay_max_gap_lines"`
+}
+
+type WLSValue struct {
+	Value int `json:"value"`
+	Count int `json:"count"`
 }
 
 type SensorResult struct {
@@ -124,6 +159,7 @@ func AnalyzeDaily(cfg Config, date string, maxLines int) (Summary, error) {
 }
 
 func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorResult, error) {
+	cfg = withDefaultThresholds(cfg)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return SensorResult{}, err
@@ -138,6 +174,9 @@ func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorR
 	metrics := Metrics{}
 	examples := Examples{}
 	payloadCounts := map[string]int{}
+	state := SensorState{
+		WLSCounts: map[int]int{},
+	}
 	var lastPayload string
 	consecutive := 0
 	linesRead := 0
@@ -162,11 +201,12 @@ func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorR
 				break
 			}
 			line := scanner.Text()
-			if !strings.HasPrefix(line, datePrefix) {
+			trimmed := strings.TrimLeft(line, " \t")
+			if !strings.HasPrefix(trimmed, datePrefix) {
 				continue
 			}
 			linesRead++
-			metrics, examples, lastPayload, consecutive = updateMetrics(metrics, examples, line, cfg, payloadCounts, lastPayload, consecutive)
+			metrics, examples, lastPayload, consecutive, state = updateMetrics(metrics, examples, trimmed, sensorType, cfg, payloadCounts, lastPayload, consecutive, state)
 		}
 		file.Close()
 		if err := scanner.Err(); err != nil {
@@ -177,11 +217,7 @@ func analyzeSensorDir(dir, datePrefix string, maxLines int, cfg Config) (SensorR
 		}
 	}
 
-	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
-	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
-	if metrics.TotalPayloads == 0 {
-		examples.Note = "no payload for date"
-	}
+	metrics, examples = finalizeMetrics(metrics, examples, state, payloadCounts, cfg)
 	if cfg.Debug {
 		fmt.Printf("sensor=%s lines=%d payloads=%d\n", sensorID, metrics.Lines, metrics.TotalPayloads)
 	}
@@ -355,6 +391,24 @@ func withDefaultThresholds(cfg Config) Config {
 	if cfg.StatusThresholds.WarningDuplicates == 0 {
 		cfg.StatusThresholds.WarningDuplicates = 10
 	}
+	if cfg.ImmediateMaxGapLines == 0 {
+		cfg.ImmediateMaxGapLines = 1
+	}
+	if cfg.DelayThresholdMs == 0 {
+		cfg.DelayThresholdMs = 2000
+	}
+	if cfg.DelayMaxGapLines == 0 {
+		cfg.DelayMaxGapLines = 5
+	}
+	if cfg.WLSValueByteLen == 0 {
+		cfg.WLSValueByteLen = 2
+	}
+	if cfg.WLSEndian == "" {
+		cfg.WLSEndian = "big"
+	}
+	if cfg.WLSValueScale == 0 {
+		cfg.WLSValueScale = 1
+	}
 	return cfg
 }
 
@@ -388,29 +442,31 @@ func buildTopIssues(results []SensorResult) []TopIssue {
 	return issues
 }
 
-func analyzeLines(lines []string, datePrefix string, cfg Config) (Metrics, Examples) {
+func analyzeLines(lines []string, datePrefix string, sensorType string, cfg Config) (Metrics, Examples) {
+	cfg = withDefaultThresholds(cfg)
 	metrics := Metrics{}
 	examples := Examples{}
 	payloadCounts := map[string]int{}
+	state := SensorState{
+		WLSCounts: map[int]int{},
+	}
 	var lastPayload string
 	consecutive := 0
 	for _, line := range lines {
-		if !strings.HasPrefix(line, datePrefix) {
+		trimmed := strings.TrimLeft(line, " \t")
+		if !strings.HasPrefix(trimmed, datePrefix) {
 			continue
 		}
-		metrics, examples, lastPayload, consecutive = updateMetrics(metrics, examples, line, cfg, payloadCounts, lastPayload, consecutive)
+		metrics, examples, lastPayload, consecutive, state = updateMetrics(metrics, examples, trimmed, sensorType, cfg, payloadCounts, lastPayload, consecutive, state)
 	}
-	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
-	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
-	if metrics.TotalPayloads == 0 {
-		examples.Note = "no payload for date"
-	}
-	return metrics, examples
+	return finalizeMetrics(metrics, examples, state, payloadCounts, cfg)
 }
 
-func updateMetrics(metrics Metrics, examples Examples, line string, cfg Config, payloadCounts map[string]int, lastPayload string, consecutive int) (Metrics, Examples, string, int) {
+func updateMetrics(metrics Metrics, examples Examples, line string, sensorType string, cfg Config, payloadCounts map[string]int, lastPayload string, consecutive int, state SensorState) (Metrics, Examples, string, int, SensorState) {
 	metrics.Lines++
-	lower := strings.ToLower(line)
+	trimmed := strings.TrimLeft(line, " \t")
+	lower := strings.ToLower(trimmed)
+	lineTime, hasTime := parseLineTime(trimmed)
 	if strings.Contains(lower, "timeout") {
 		metrics.Timeout++
 		if examples.FirstTimeoutLine == "" {
@@ -424,7 +480,30 @@ func updateMetrics(metrics Metrics, examples Examples, line string, cfg Config, 
 		}
 	}
 
-	payload, ok := extractPayload(line)
+	if hasTime && strings.Contains(lower, "snd:") {
+		if state.HasPending {
+			metrics.MissingTotal++
+		}
+		state.PendingSentAt = lineTime
+		state.PendingLine = metrics.Lines
+		state.HasPending = true
+	}
+
+	if hasTime && strings.Contains(lower, "rcv:") {
+		state.LastRcvAt = lineTime
+		if state.HasPending {
+			latency := lineTime.Sub(state.PendingSentAt).Milliseconds()
+			lineGap := metrics.Lines - state.PendingLine
+			metrics.PairsTotal++
+			if latency >= cfg.DelayThresholdMs || lineGap > cfg.DelayMaxGapLines {
+				metrics.DelayedTotal++
+			}
+			state.Latencies = append(state.Latencies, latency)
+			state.HasPending = false
+		}
+	}
+
+	payload, ok := extractPayload(trimmed)
 	if ok {
 		metrics.TotalPayloads++
 		payloadCounts[payload]++
@@ -447,12 +526,24 @@ func updateMetrics(metrics Metrics, examples Examples, line string, cfg Config, 
 			lastPayload = payload
 			consecutive = 1
 		}
+		if strings.EqualFold(sensorType, "WLS") {
+			if value, ok := parseWLSValue(payload, cfg); ok {
+				state.WLSCounts[value]++
+				state.WLSLast = &value
+				if state.WLSMin == nil || value < *state.WLSMin {
+					state.WLSMin = &value
+				}
+				if state.WLSMax == nil || value > *state.WLSMax {
+					state.WLSMax = &value
+				}
+			}
+		}
 	} else {
 		lastPayload = ""
 		consecutive = 0
 	}
 
-	return metrics, examples, lastPayload, consecutive
+	return metrics, examples, lastPayload, consecutive, state
 }
 
 type fileSelectionNotes struct {
@@ -504,4 +595,166 @@ func latestFile(files []string) (string, error) {
 		return "", errors.New("no files available")
 	}
 	return latest, nil
+}
+
+type SensorState struct {
+	PendingSentAt time.Time
+	PendingLine   int
+	HasPending    bool
+	Latencies     []int64
+	LastRcvAt     time.Time
+	WLSCounts     map[int]int
+	WLSLast       *int
+	WLSMin        *int
+	WLSMax        *int
+}
+
+func finalizeMetrics(metrics Metrics, examples Examples, state SensorState, payloadCounts map[string]int, cfg Config) (Metrics, Examples) {
+	if state.HasPending {
+		metrics.MissingTotal++
+	}
+	if !state.LastRcvAt.IsZero() {
+		metrics.LastRcvAt = state.LastRcvAt.Format(time.RFC3339)
+	}
+	metrics.UniqueRatioPct = calculateRatio(metrics.UniquePayloads, metrics.TotalPayloads)
+	examples.TopDuplicatePayload = topDuplicatePayload(payloadCounts)
+	metrics.LineGap = LineGapConfig{
+		ImmediateMaxGapLines: cfg.ImmediateMaxGapLines,
+		DelayMaxGapLines:     cfg.DelayMaxGapLines,
+	}
+	metrics.LatencyMs = calculateLatencyStats(state.Latencies)
+	if len(state.WLSCounts) > 0 {
+		metrics.WLSLastValueCm = state.WLSLast
+		metrics.WLSMinValueCm = state.WLSMin
+		metrics.WLSMaxValueCm = state.WLSMax
+		metrics.WLSTopValues = topWLSValues(state.WLSCounts)
+	}
+	if metrics.TotalPayloads == 0 {
+		examples.Note = "no payload for date"
+	}
+	return metrics, examples
+}
+
+func calculateLatencyStats(latencies []int64) LatencyStats {
+	if len(latencies) == 0 {
+		return LatencyStats{}
+	}
+	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	min := latencies[0]
+	max := latencies[len(latencies)-1]
+	sum := int64(0)
+	for _, value := range latencies {
+		sum += value
+	}
+	avg := float64(sum) / float64(len(latencies))
+	p95Index := int(float64(len(latencies))*0.95) - 1
+	if p95Index < 0 {
+		p95Index = 0
+	}
+	p95 := latencies[p95Index]
+	return LatencyStats{
+		Min: &min,
+		Avg: &avg,
+		P95: &p95,
+		Max: &max,
+	}
+}
+
+func parseLineTime(line string) (time.Time, bool) {
+	if len(line) < len("2006-01-02 15:04:05.000") {
+		return time.Time{}, false
+	}
+	trimmed := strings.TrimLeft(line, " \t")
+	if len(trimmed) < len("2006-01-02 15:04:05.000") {
+		return time.Time{}, false
+	}
+	value := trimmed[:23]
+	parsed, err := time.ParseInLocation("2006-01-02 15:04:05.000", value, time.Local)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+func parseWLSValue(payload string, cfg Config) (int, bool) {
+	bytes, ok := parsePayloadBytes(payload)
+	if !ok {
+		return 0, false
+	}
+	start := cfg.WLSValueByteIndexStart
+	length := cfg.WLSValueByteLen
+	if start < 0 || length <= 0 || start+length > len(bytes) {
+		return 0, false
+	}
+	var value int
+	switch strings.ToLower(cfg.WLSEndian) {
+	case "little":
+		for i := length - 1; i >= 0; i-- {
+			value = (value << 8) + int(bytes[start+i])
+		}
+	default:
+		for i := 0; i < length; i++ {
+			value = (value << 8) + int(bytes[start+i])
+		}
+	}
+	scale := cfg.WLSValueScale
+	if scale == 0 {
+		scale = 1
+	}
+	scaled := int(float64(value) * scale)
+	return scaled, true
+}
+
+func parsePayloadBytes(payload string) ([]byte, bool) {
+	clean := strings.Trim(payload, "()[]{} ")
+	if clean == "" {
+		return nil, false
+	}
+	parts := strings.FieldsFunc(clean, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	})
+	if len(parts) == 0 {
+		return nil, false
+	}
+	bytes := make([]byte, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(part), "0x"))
+		if part == "" {
+			continue
+		}
+		base := 10
+		if strings.ContainsAny(part, "abcdef") || len(part) == 2 {
+			base = 16
+		}
+		value, err := parseUint(part, base)
+		if err != nil {
+			return nil, false
+		}
+		bytes = append(bytes, byte(value))
+	}
+	if len(bytes) == 0 {
+		return nil, false
+	}
+	return bytes, true
+}
+
+func parseUint(value string, base int) (uint64, error) {
+	return strconv.ParseUint(value, base, 8)
+}
+
+func topWLSValues(counts map[int]int) []WLSValue {
+	values := make([]WLSValue, 0, len(counts))
+	for value, count := range counts {
+		values = append(values, WLSValue{Value: value, Count: count})
+	}
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].Count == values[j].Count {
+			return values[i].Value < values[j].Value
+		}
+		return values[i].Count > values[j].Count
+	})
+	if len(values) > 5 {
+		values = values[:5]
+	}
+	return values
 }

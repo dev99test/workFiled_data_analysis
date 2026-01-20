@@ -8,6 +8,13 @@
   "duplicate_run_threshold": 3,
   "fallback_to_latest_file": true,
   "debug": false,
+  "immediate_max_gap_lines": 1,
+  "delay_threshold_ms": 2000,
+  "delay_max_gap_lines": 5,
+  "wls_value_byte_index_start": 0,
+  "wls_value_byte_len": 2,
+  "wls_endian": "big",
+  "wls_value_scale": 1.0,
   "status_thresholds": {
     "error_timeout": 3,
     "error_no_response": 3,
