@@ -45,6 +45,7 @@ type Examples struct {
 	FirstNoResponseLine string `json:"first_no_response_line,omitempty"`
 	FirstZeroDataLine   string `json:"first_zero_data_line,omitempty"`
 	TopDuplicatePayload string `json:"top_duplicate_payload,omitempty"`
+	ZeroDataPayload     string `json:"zero_data_payload,omitempty"`
 	Note                string `json:"note,omitempty"`
 }
 
@@ -370,18 +371,33 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 	payload, ok := extractPayload(trimmed)
 	if ok {
 		metrics.TotalPayloads++
-		payloadCounts[payload]++
-		if payloadCounts[payload] == 1 {
-			metrics.UniquePayloads++
-		}
-		if isZeroPayload(payload) {
+		isValid, isZero := validateWLSFrame(payload, sensorType)
+		if isZero {
 			metrics.ZeroData++
 			if examples.FirstZeroDataLine == "" {
 				examples.FirstZeroDataLine = line
 			}
+			if examples.ZeroDataPayload == "" {
+				examples.ZeroDataPayload = payload
+			}
+		}
+		if isValid {
+			payloadCounts[payload]++
+			if payloadCounts[payload] == 1 {
+				metrics.UniquePayloads++
+			}
+		}
+		if !isZero && isZeroPayload(payload) {
+			metrics.ZeroData++
+			if examples.FirstZeroDataLine == "" {
+				examples.FirstZeroDataLine = line
+			}
+			if examples.ZeroDataPayload == "" {
+				examples.ZeroDataPayload = payload
+			}
 		}
 
-		if payload == lastPayload {
+		if payload == lastPayload && isValid {
 			consecutive++
 			if consecutive >= cfg.DuplicateRunThreshold {
 				metrics.Duplicates++
@@ -390,7 +406,7 @@ func updateMetrics(metrics Metrics, examples Examples, line string, sensorType s
 			lastPayload = payload
 			consecutive = 1
 		}
-		if strings.EqualFold(sensorType, "WLS") {
+		if strings.EqualFold(sensorType, "WLS") && isValid && !isZero {
 			if value, ok := parseWLSValue(payload); ok {
 				state.WLSLast = &value
 				if state.WLSMin == nil || value < *state.WLSMin {
@@ -571,6 +587,20 @@ func parseWLSValue(payload string) (int, bool) {
 		return 0, false
 	}
 	return value, true
+}
+
+func validateWLSFrame(payload string, sensorType string) (bool, bool) {
+	if !strings.EqualFold(sensorType, "WLS") {
+		return true, false
+	}
+	bytes, ok := parsePayloadBytes(payload)
+	if !ok || len(bytes) != 11 {
+		return false, true
+	}
+	if bytes[0] != 0xFA || bytes[len(bytes)-1] != 0x76 {
+		return false, true
+	}
+	return true, false
 }
 
 func parsePayloadBytes(payload string) ([]byte, bool) {

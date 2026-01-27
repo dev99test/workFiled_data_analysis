@@ -130,3 +130,31 @@ func TestParseWLSValue(t *testing.T) {
 		t.Fatalf("expected max value 96, got %+v", metrics.WLSMaxValueCm)
 	}
 }
+
+func TestWLSFrameValidDoesNotIncrementZeroData(t *testing.T) {
+	cfg := Config{DuplicateRunThreshold: 3}
+	metrics, examples := analyzeLines([]string{
+		"2026-01-19 00:00:01.000 rcv: (FA, FF, 07, 01, 00, 00, DD, DD, FF, FC, 76)",
+	}, "2026-01-19", "WLS", cfg)
+
+	if metrics.ZeroData != 0 {
+		t.Fatalf("expected zero_data 0, got %d", metrics.ZeroData)
+	}
+	if examples.ZeroDataPayload != "" {
+		t.Fatalf("expected zero_data_payload empty for valid frame")
+	}
+}
+
+func TestWLSFrameInvalidLengthCountsZeroData(t *testing.T) {
+	cfg := Config{DuplicateRunThreshold: 3}
+	metrics, examples := analyzeLines([]string{
+		"2026-01-19 00:00:01.000 rcv: (FA, FF, 07, 01, 00, 00, DD, DD, FF, FC, 76, FA, FF)",
+	}, "2026-01-19", "WLS", cfg)
+
+	if metrics.ZeroData != 1 {
+		t.Fatalf("expected zero_data 1, got %d", metrics.ZeroData)
+	}
+	if examples.ZeroDataPayload == "" {
+		t.Fatalf("expected zero_data_payload to be set")
+	}
+}
