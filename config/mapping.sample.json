@@ -1,0 +1,13 @@
+{
+  "4":  {"sensor_id":"GATE1","type":"GATE","field":"value"},
+  "5":  {"sensor_id":"GATE2","type":"GATE","field":"value"},
+  "1":  {"sensor_id":"WLS1","type":"WLS","field":"value","tolerance":1.0},
+  "2":  {"sensor_id":"WLS2","type":"WLS","field":"value","tolerance":1.0},
+  "6":  {"sensor_id":"TEMP1","type":"TEMP","field":"value"},
+  "301":{"sensor_id":"PUMP1","type":"PUMP","field":"value"},
+  "302":{"sensor_id":"PUMP2","type":"PUMP","field":"value"},
+  "303":{"sensor_id":"PUMP3","type":"PUMP","field":"value"},
+  "304":{"sensor_id":"PUMP4","type":"PUMP","field":"value"},
+  "80": {"sensor_id":"BOARD80","type":"BOARD","field":"ping","json_type":"BOARD"},
+  "90": {"sensor_id":"SPEAKER90","type":"SPEAKER","field":"ping","json_type":"SPEAKER"}
+}
