@@ -165,3 +165,7 @@ exec "${BIN}" analyze-daily \
 - `date -d 'yesterday' +%Y%m%d`가 **항상 “어제 날짜”를 계산**하는지 확인하세요.
 - `/etc/field-client/config.json` 경로가 실제 config 위치와 일치해야 합니다.
 - `outbox_dir`에 대한 **쓰기 권한**이 `User=field` 계정에 있어야 합니다.
+
+### 데이터 전송
+- `데이터는 tar.gz 로 압축되어 전송.
+- `접속용 SSH키 설정을 해야 전송이 됩니다.
