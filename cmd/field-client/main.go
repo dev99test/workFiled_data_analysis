@@ -47,7 +47,7 @@ func runAnalyzeDaily(args []string) {
 	fs.Parse(args)
 
 	if *dateStr == "" {
-		fatal(errors.New("--date is required"))
+		fatal(errors.New("--date is required (YYYYMMDD)"))
 	}
 	cfg, err := loadConfig(*configPath)
 	if err != nil {

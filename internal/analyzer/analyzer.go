@@ -235,7 +235,10 @@ func findSensorDirs(root string, includeGlobs, excludeDirs []string) ([]string, 
 
 func normalizeDatePrefix(date string) (string, error) {
 	if len(date) != 8 {
-		return "", fmt.Errorf("invalid date: %s", date)
+		return "", fmt.Errorf("invalid date %q: expected YYYYMMDD", date)
+	}
+	if _, err := time.Parse("20060102", date); err != nil {
+		return "", fmt.Errorf("invalid date %q: expected YYYYMMDD", date)
 	}
 	return fmt.Sprintf("%s-%s-%s", date[:4], date[4:6], date[6:]), nil
 }
