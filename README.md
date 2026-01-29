@@ -119,7 +119,7 @@ Wants=network-online.target
 Type=oneshot
 User=user
 Group=user
-WorkingDirectory=/user/eumit/Documents/workFiled_data_analysis
+WorkingDirectory=/user/user/Documents/workFiled_data_analysis
 ExecStart=/home/user/Documents/workFiled_data_analysis/run_analyze_yesterday.sh
 
 ```
@@ -146,7 +146,7 @@ set -euo pipefail
 BASE="/home/user/Documents/workFiled_data_analysis"
 BIN="${BASE}/field-client"
 CFG="${BASE}/config/config.json"
-LOG_ROOT="/home/eumit/Downloads/underware202408-main/log"
+LOG_ROOT="/home/user/Downloads/underware202408-main/log"
 
 # 어제 날짜 (YYYYMMDD)
 TARGET_DATE="$(date -d 'yesterday' +%Y%m%d)"
