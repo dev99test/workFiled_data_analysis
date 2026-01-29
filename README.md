@@ -143,7 +143,7 @@ WantedBy=timers.target
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE="/home/eumit/test/workFiled_data_analysis"
+BASE="/home/user/Documents/workFiled_data_analysis"
 BIN="${BASE}/field-client"
 CFG="${BASE}/config/config.json"
 LOG_ROOT="/home/eumit/Downloads/underware202408-main/log"
