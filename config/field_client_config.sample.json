@@ -1,6 +1,7 @@
 {
   "site_id": "siteA",
   "device_id": "device01",
+  "work_field": "field-01",
   "outbox_dir": "/home/eumit/field-outbox",
   "log_root": "/home/eumit/Downloads/underware202408-main/log",
   "include_globs": ["GATE*", "WLS*", "PUMP*", "TEMP*"],
