@@ -111,12 +111,17 @@ $outbox_dir/daily/YYYYMMDD/analysis.json
 
 ```ini
 [Unit]
-Description=Field Client Daily Analyze
+Description=Field Client Daily Log Analysis (Yesterday)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/field-client analyze-daily -config /etc/field-client/config.json -date $(date -d 'yesterday' +%%Y%%m%%d)
-User=field
+User=user
+Group=user
+WorkingDirectory=/user/eumit/Documents/workFiled_data_analysis
+ExecStart=/home/user/Documents/workFiled_data_analysis/run_analyze_yesterday.sh
+
 ```
 
 ### `/etc/systemd/system/field-client-analyze.timer`
@@ -132,6 +137,28 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 ```
+
+### `run_analyze_yesterday.sh`
+```ini
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE="/home/eumit/test/workFiled_data_analysis"
+BIN="${BASE}/field-client"
+CFG="${BASE}/config/config.json"
+LOG_ROOT="/home/eumit/Downloads/underware202408-main/log"
+
+# 어제 날짜 (YYYYMMDD)
+TARGET_DATE="$(date -d 'yesterday' +%Y%m%d)"
+
+echo "[INFO] Analyzing date: ${TARGET_DATE}"
+
+exec "${BIN}" analyze-daily \
+  -config "${CFG}" \
+  -date "${TARGET_DATE}" \
+  -log-root "${LOG_ROOT}"
+```
+
 
 ### 확인 포인트
 
