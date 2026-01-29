@@ -47,7 +47,7 @@ go build -o field-client ./cmd/field-client
   - 하위에 `GATE*`, `WLS*`, `PUMP*`, `TEMP*` 디렉터리가 있어야 합니다.
 - `exclude_dirs`: 분석에서 제외할 디렉터리
   - 기본값: `ALL`, `PING`, `SERVER`
-- (옵션) `duplicate_run_threshold`, `fallback_to_latest_file`, `debug`
+- (옵션) `duplicate_run_threshold`, `fallback_to_laDocument_file`, `debug`
 - (옵션) `-max-lines` 옵션으로 센서당 최대 라인 수를 조절할 수 있습니다.
 
 ### `config/mapping.sample.json`
@@ -100,7 +100,7 @@ $outbox_dir/daily/YYYYMMDD/analysis.json
 - 제외 디렉터리: `ALL`, `PING`, `SERVER`
 - 파일 선택 규칙:
   - 날짜(`YYYY-MM-DD`)가 포함된 로그 파일을 우선 분석
-  - 해당 날짜 파일이 없으면 **최신 파일로 fallback** (config의 `fallback_to_latest_file` 기준)
+  - 해당 날짜 파일이 없으면 **최신 파일로 fallback** (config의 `fallback_to_laDocument_file` 기준)
 - `-max-lines`는 센서별 처리 라인 수를 제한하여 과도한 로그로 인한 분석 지연을 방지합니다.
 
 ## field-client 자동 실행 (systemd timer)
@@ -119,7 +119,7 @@ Wants=network-online.target
 Type=oneshot
 User=user
 Group=user
-WorkingDirectory=/user/eumit/Documents/workFiled_data_analysis
+WorkingDirectory=/user/user/Documents/workFiled_data_analysis
 ExecStart=/home/user/Documents/workFiled_data_analysis/run_analyze_yesterday.sh
 
 ```
@@ -138,6 +138,80 @@ Persistent=true
 WantedBy=timers.target
 ```
 
+### `/usr/local/bin/field-client-analyze-yesterday.sh`
+
+```ini
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE="/home/user/Document/workFiled_data_analysis"
+BIN="${BASE}/field-client"
+CFG="${BASE}/config/config.json"
+LOG_ROOT="/home/user/Document/work-filed/log"
+
+# ===== 전송 대상 서버 =====
+REMOTE_USER="user"
+REMOTE_HOST="xxx.xxx.xxx.xxx"
+REMOTE_DIR="/home/user/원하는 디렉터리
+SSH_KEY="/home/user/.ssh/field_client_ed25519"
+
+TARGET_DATE="$(date -d 'yesterday' +%Y%m%d)"
+echo "[INFO] Analyzing date: ${TARGET_DATE}"
+
+# 1) 분석 실행
+"${BIN}" analyze-daily \
+  -config "${CFG}" \
+  -date "${TARGET_DATE}" \
+  -log-root "${LOG_ROOT}"
+
+# 2) 결과 파일 찾기 (outbox_dir 아래 daily/YYYYMMDD/analysis.json)
+OUTBOX_DIR="$(python3 - <<'PY'
+import json
+p="/home/user/Document/workFiled_data_analysis/config/config.json"
+cfg=json.load(open(p))
+print(cfg.get("outbox_dir","").rstrip("/"))
+PY
+)"
+if [[ -z "${OUTBOX_DIR}" ]]; then
+  echo "[ERROR] outbox_dir is empty in config.json"
+  exit 2
+fi
+
+ANALYSIS_JSON="${OUTBOX_DIR}/daily/${TARGET_DATE}/analysis.json"
+if [[ ! -f "${ANALYSIS_JSON}" ]]; then
+  echo "[ERROR] analysis.json not found: ${ANALYSIS_JSON}"
+  exit 3
+fi
+
+# 3) tar.gz로 패키징
+SITE_ID="$(python3 - <<'PY'
+import json
+cfg=json.load(open("/home/user/Document/workFiled_data_analysis/config/config.json"))
+print(cfg.get("site_id","site"))
+PY
+)"
+DEVICE_ID="$(python3 - <<'PY'
+import json
+cfg=json.load(open("/home/user/Document/workFiled_data_analysis/config/config.json"))
+print(cfg.get("device_id","device"))
+PY
+)"
+
+PKG_NAME="${SITE_ID}_${DEVICE_ID}_${TARGET_DATE}.tar.gz"
+PKG_PATH="${OUTBOX_DIR}/daily/${TARGET_DATE}/${PKG_NAME}"
+
+tar -C "${OUTBOX_DIR}/daily/${TARGET_DATE}" -czf "${PKG_PATH}" "analysis.json"
+echo "[INFO] Packaged: ${PKG_PATH}"
+
+# 4) scp 전송
+echo "[INFO] Uploading to ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}"
+scp -i "${SSH_KEY}" -o BatchMode=yes -o ConnectTimeout=10 \
+  "${PKG_PATH}" \
+  "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/"
+
+echo "[INFO] Upload done"
+
+
 ### `run_analyze_yesterday.sh`
 ```ini
 #!/usr/bin/env bash
@@ -146,7 +220,7 @@ set -euo pipefail
 BASE="/home/user/Documents/workFiled_data_analysis"
 BIN="${BASE}/field-client"
 CFG="${BASE}/config/config.json"
-LOG_ROOT="/home/eumit/Downloads/underware202408-main/log"
+LOG_ROOT="/home/user/Downloads/underware202408-main/log"
 
 # 어제 날짜 (YYYYMMDD)
 TARGET_DATE="$(date -d 'yesterday' +%Y%m%d)"
