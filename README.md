@@ -6,11 +6,13 @@
 
 ### 빌드
 
+
 ```bash
 go build -o field-client ./cmd/field-client
 ```
 
 ### 일일 로그 분석 실행
+
 
 ```bash
 ./field-client analyze-daily \
@@ -19,7 +21,9 @@ go build -o field-client ./cmd/field-client
   --log-root /home/eumit/Downloads/underware202408-main/log
 ```
 
+
 `log_root` 아래의 센서 디렉터리(GATE*/WLS*/PUMP*/TEMP*)를 날짜 기준으로 분석하고 결과를 생성합니다.
+
 
 ```
 $outbox/daily/YYYYMMDD/analysis.json
@@ -29,19 +33,24 @@ $outbox/daily/YYYYMMDD/analysis.json
 
 ### 크론 예시
 
+
 ```
 10 0 * * * /usr/local/bin/field-client analyze-daily --config /etc/field-client/config.json --date $(date -d 'yesterday' +\%Y\%m\%d) --log-root /home/eumit/Downloads/underware202408-main/log
 ```
+
 
 ## 서버 ingest 워커
 
 ### 빌드
 
+
 ```bash
 go build -o field-ingest-worker ./cmd/field-ingest-worker
 ```
 
+
 ### 실행
+
 
 ```bash
 ./field-ingest-worker \
@@ -52,7 +61,9 @@ go build -o field-ingest-worker ./cmd/field-ingest-worker
   --mapping /etc/field-ingest/mapping.json
 ```
 
+
 워커 처리 순서:
+
 
 1. Unzips incoming daily ZIP files.
 2. Verifies `manifest.json`.
@@ -75,10 +86,13 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
+
 ## 샘플 설정
+
 
 - `config/field_client_config.sample.json`
 - `config/mapping.sample.json`
+
 
 ## 분석 규칙 요약
 
@@ -87,3 +101,4 @@ WantedBy=multi-user.target
 - 파일명에 날짜(YYYY-MM-DD)가 포함된 로그 파일을 우선 분석하며, 없으면 최신 파일로 fallback합니다.
 - WLS는 11바이트 프레임(FA...76)만 유효로 판단하고, 유효하지 않으면 zero_data로 집계합니다.
 - 서버 워커는 ZIP을 풀어 manifest 검증 후 SQLite에 적재합니다.
+
