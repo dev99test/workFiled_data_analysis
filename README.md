@@ -108,7 +108,7 @@ $outbox_dir/daily/YYYYMMDD/analysis.json
 아래 예시는 **“오늘이 2026-01-29이면, 다음날 2026-01-30 00:05에 2026-01-29 하루치 분석”**을 수행합니다.
 
 ### `/etc/systemd/system/field-client-analyze.service`
-
+```bash
 ```ini
 [Unit]
 Description=Field Client Daily Log Analysis (Yesterday)
@@ -125,7 +125,7 @@ ExecStart=/home/user/Documents/workFiled_data_analysis/run_analyze_yesterday.sh
 ```
 
 ### `/etc/systemd/system/field-client-analyze.timer`
-
+```bash
 ```ini
 [Unit]
 Description=Run field-client analyze-daily at 00:05
@@ -139,6 +139,7 @@ WantedBy=timers.target
 ```
 
 ### `run_analyze_yesterday.sh`
+```bash
 ```ini
 #!/usr/bin/env bash
 set -euo pipefail
