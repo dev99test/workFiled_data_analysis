@@ -1,16 +1,18 @@
 # Field Sensor Data Ingest
 
-This repository provides a field PC raw-log analyzer and a server-side ingest/comparison worker.
+이 저장소는 현장 PC에서 센서 로그를 일 단위로 분석하는 도구와, 서버에서 ZIP 적재/비교를 수행하는 워커를 제공합니다.
 
-## Field PC (Go analyzer)
+## 현장 PC 로그 분석기 (Go)
 
-### Build
+### 빌드
+
 
 ```bash
 go build -o field-client ./cmd/field-client
 ```
 
-### Analyze daily logs
+### 일일 로그 분석 실행
+
 
 ```bash
 ./field-client analyze-daily \
@@ -19,29 +21,36 @@ go build -o field-client ./cmd/field-client
   --log-root /home/eumit/Downloads/underware202408-main/log
 ```
 
-This reads the configured `log_root` and writes:
+
+`log_root` 아래의 센서 디렉터리(GATE*/WLS*/PUMP*/TEMP*)를 날짜 기준으로 분석하고 결과를 생성합니다.
+
 
 ```
 $outbox/daily/YYYYMMDD/analysis.json
 ```
 
-The output JSON includes per-sensor metrics, examples, and a top-issues summary.
+결과 JSON에는 센서별 시간 범위, snd/rcv 개수, no_response, zero_data, duplicates, WLS 수위(min/max/last) 등이 포함됩니다.
 
-### Cron example
+### 크론 예시
+
 
 ```
 10 0 * * * /usr/local/bin/field-client analyze-daily --config /etc/field-client/config.json --date $(date -d 'yesterday' +\%Y\%m\%d) --log-root /home/eumit/Downloads/underware202408-main/log
 ```
 
-## Server ingest worker
 
-### Build
+## 서버 ingest 워커
+
+### 빌드
+
 
 ```bash
 go build -o field-ingest-worker ./cmd/field-ingest-worker
 ```
 
-### Run
+
+### 실행
+
 
 ```bash
 ./field-ingest-worker \
@@ -52,7 +61,9 @@ go build -o field-ingest-worker ./cmd/field-ingest-worker
   --mapping /etc/field-ingest/mapping.json
 ```
 
-The worker:
+
+워커 처리 순서:
+
 
 1. Unzips incoming daily ZIP files.
 2. Verifies `manifest.json`.
@@ -75,14 +86,19 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-## Sample configuration
+
+## 샘플 설정
+
 
 - `config/field_client_config.sample.json`
 - `config/mapping.sample.json`
 
-## Notes
 
-- The analyzer scans sensor folders matching include globs (default: GATE*, WLS*, PUMP*, TEMP*) and skips excluded directories.
-- It prefers log files whose names include the target date (YYYY-MM-DD) and falls back to the latest file when none match.
-- The comparison window is ±3 seconds by default and configurable with `--window`.
-- SQLite uses `modernc.org/sqlite` for pure Go compatibility.
+## 분석 규칙 요약
+
+- 기본 포함 디렉터리: GATE*, WLS*, PUMP*, TEMP*
+- 기본 제외 디렉터리: ALL, PING, SERVER
+- 파일명에 날짜(YYYY-MM-DD)가 포함된 로그 파일을 우선 분석하며, 없으면 최신 파일로 fallback합니다.
+- WLS는 11바이트 프레임(FA...76)만 유효로 판단하고, 유효하지 않으면 zero_data로 집계합니다.
+- 서버 워커는 ZIP을 풀어 manifest 검증 후 SQLite에 적재합니다.
+
