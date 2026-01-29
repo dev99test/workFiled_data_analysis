@@ -109,6 +109,7 @@ $outbox_dir/daily/YYYYMMDD/analysis.json
 
 ### `/etc/systemd/system/field-client-analyze.service`
 
+```bash
 ```ini
 [Unit]
 Description=Field Client Daily Log Analysis (Yesterday)
@@ -121,7 +122,7 @@ User=user
 Group=user
 WorkingDirectory=/user/user/Documents/workFiled_data_analysis
 ExecStart=/home/user/Documents/workFiled_data_analysis/run_analyze_yesterday.sh
-
+```
 ```
 
 ### `/etc/systemd/system/field-client-analyze.timer`
