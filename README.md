@@ -212,6 +212,11 @@ flowchart LR
 
 ### 실행 흐름 시퀀스
 
+```mermaid
+---
+config:
+  layout: dagre
+---
 sequenceDiagram
   autonumber
   participant T as systemd timer
