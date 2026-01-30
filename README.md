@@ -174,7 +174,11 @@ exec "${BIN}" analyze-daily \
 ###  전체 구성 요소 곤계도 (현장 <-> 수집서버)
 
 ***
-
+```mermaid
+---
+config:
+  layout: dagre
+---
 flowchart LR
   subgraph FieldPC["현장 PC"]
     A["systemd timer<br>매일 00:05"]
