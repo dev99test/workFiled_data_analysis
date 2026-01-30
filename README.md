@@ -170,3 +170,27 @@ exec "${BIN}" analyze-daily \
 ### 데이터 전송
 - `데이터는 tar.gz 로 압축되어 전송.
 - `접속용 SSH키 설정을 해야 전송이 됩니다.
+
+###  `전체 구성 요소 곤계도 (현장 <-> 수집서버)`
+***
+
+flowchart LR
+  subgraph FieldPC[현장 PC]
+    A[systemd timer<br/>매일 00:05] --> B[run_analyze_yesterday.sh<br/>날짜=어제 계산]
+    B --> C[field-client analyze-daily<br/>-config, -date, -log-root]
+    D[config.json<br/>site_id, device_id, outbox_dir] --> C
+    E[mapping.json<br/>센서 ID/타입/필드/허용오차] --> C
+
+    F[log_root/<br/>GATE*, WLS*, PUMP*, TEMP*] --> C
+    X[제외: ALL, PING, SERVER] -. ignore .-> C
+
+    C --> G[outbox_dir/daily/YYYYMMDD/analysis.json]
+    G --> H[tar.gz 패키징<br/>site_device_YYYYMMDD.tar.gz]
+    H --> I[SCP 업로드<br/>자동업로드 전용키 사용]
+  end
+
+  subgraph CentralServer[중앙 서버]
+    J[/home/eum/test<br/>수신 폴더] <-- upload --> I
+    J --> K[후속 처리(향후)<br/>압축해제/적재/시각화]
+  end
+
