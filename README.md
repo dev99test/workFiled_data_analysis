@@ -194,7 +194,7 @@ flowchart LR
   end
 
   subgraph CentralServer["수집제어서버"]
-    J["/home/eum/test<br>수신 폴더"]
+    J["/home/user/test<br>수신 폴더"]
     K["후속 처리(향후)<br>압축해제 / 적재 / 시각화"]
   end
 
@@ -228,7 +228,7 @@ sequenceDiagram
   participant OUT as outbox_dir
   participant TAR as tar.gz packager
   participant SCP as scp (deploy key)
-  participant SV as Central Server (/home/eum/test)
+  participant SV as Central Server (/home/user/test)
 
   T->>S: 00:05 run
   S->>S: compute yesterday (YYYYMMDD)
@@ -238,7 +238,7 @@ sequenceDiagram
   FC->>OUT: write daily/YYYYMMDD/analysis.json (mkdir if needed)
   S->>TAR: create site_device_YYYYMMDD.tar.gz
   TAR->>SCP: upload tar.gz
-  SCP->>SV: copy to /home/eum/test
+  SCP->>SV: copy to /home/user/test
 ```
 
 ### 산출물(파일) 관계도
@@ -261,5 +261,5 @@ flowchart TB
 
   FC --> OUT[outbox_dir/daily/YYYYMMDD/analysis.json]
   OUT --> TAR[site_device_YYYYMMDD.tar.gz]
-  TAR --> REMOTE[Central Server<br/>/home/eum/test/]
+  TAR --> REMOTE[Central Server<br/>/home/user/test/]
 ```
