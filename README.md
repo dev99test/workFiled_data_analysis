@@ -211,10 +211,9 @@ flowchart LR
   J --> K
 ```
 
-### `실행 흐름 시퀀스`
+### 실행 흐름 시퀀스
 
 ***
-
 ```mermaid
 ---
 config:
@@ -240,4 +239,27 @@ sequenceDiagram
   S->>TAR: create site_device_YYYYMMDD.tar.gz
   TAR->>SCP: upload tar.gz
   SCP->>SV: copy to /home/eum/test
+```
+
+### 산출물(파일) 관계도
+
+```mermaid
+---
+config:
+  layout: dagre
+---
+flowchart TB
+  LOGROOT[log_root/] --> DIRS[Sensor directories]
+  DIRS --> G1[GATE*/YYYY-MM-DD.log]
+  DIRS --> W1[WLS*/YYYY-MM-DD.log]
+  DIRS --> P1[PUMP*/YYYY-MM-DD.log]
+  DIRS --> T1[TEMP*/YYYY-MM-DD.log]
+
+  CFG[config.json<br/>site_id/device_id/outbox_dir] --> FC[field-client analyze-daily]
+  MAP[mapping.json<br/>sensor mapping rules] --> FC
+  LOGROOT --> FC
+
+  FC --> OUT[outbox_dir/daily/YYYYMMDD/analysis.json]
+  OUT --> TAR[site_device_YYYYMMDD.tar.gz]
+  TAR --> REMOTE[Central Server<br/>/home/eum/test/]
 ```
