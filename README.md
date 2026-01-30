@@ -174,23 +174,35 @@ exec "${BIN}" analyze-daily \
 ###  `전체 구성 요소 곤계도 (현장 <-> 수집서버)`
 ***
 
+---
+config:
+  layout: dagre
+---
 flowchart LR
-  subgraph FieldPC[현장 PC]
-    A[systemd timer<br/>매일 00:05] --> B[run_analyze_yesterday.sh<br/>날짜=어제 계산]
-    B --> C[field-client analyze-daily<br/>-config, -date, -log-root]
-    D[config.json<br/>site_id, device_id, outbox_dir] --> C
-    E[mapping.json<br/>센서 ID/타입/필드/허용오차] --> C
-
-    F[log_root/<br/>GATE*, WLS*, PUMP*, TEMP*] --> C
-    X[제외: ALL, PING, SERVER] -. ignore .-> C
-
-    C --> G[outbox_dir/daily/YYYYMMDD/analysis.json]
-    G --> H[tar.gz 패키징<br/>site_device_YYYYMMDD.tar.gz]
-    H --> I[SCP 업로드<br/>자동업로드 전용키 사용]
+ subgraph FieldPC["현장 PC"]
+        B["run_analyze_yesterday.sh<br>날짜=전날 날짜"]
+        A["systemd timer<br>매일 00:05"]
+        C["field-client analyze-daily<br>-config, -date, -log-root"]
+        D["config.json<br>site_id, device_id, outbox_dir"]
+        E["mapping.json<br>센서 ID/타입/필드/허용오차"]
+        F["log_root/<br>GATE*, WLS*, PUMP*, TEMP*"]
+        X["제외: ALL, PING, SERVER"]
+        G["outbox_dir/daily/YYYYMMDD/analysis.json"]
+        H["tar.gz 패키징<br>site_device_YYYYMMDD.tar.gz"]
+        I["SCP 업로드<br>자동업로드 전용키 사용"]
   end
-
-  subgraph CentralServer[중앙 서버]
-    J[/home/eum/test<br/>수신 폴더] <-- upload --> I
-    J --> K[후속 처리(향후)<br/>압축해제/적재/시각화]
+ subgraph CentralServer["수집제어서버"]
+        J["/home/eum/test<br>수신 폴더"]
+        K["후속 처리(향후)<br>압축해제/적재/시각화"]
   end
-
+    A --> B
+    B --> C
+    D --> C
+    E --> C
+    F --> C
+    X -. ignore .-> C
+    C --> G
+    G --> H
+    H --> I
+    I -- upload --> J
+    J --> K
