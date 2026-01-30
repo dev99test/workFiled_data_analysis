@@ -210,4 +210,25 @@ flowchart LR
   I --> J
   J --> K
 
+### 실행 흐름 시퀀스
 
+sequenceDiagram
+  autonumber
+  participant T as systemd timer
+  participant S as run_analyze_yesterday.sh
+  participant FC as field-client
+  participant LOG as log_root (sensor logs)
+  participant OUT as outbox_dir
+  participant TAR as tar.gz packager
+  participant SCP as scp (deploy key)
+  participant SV as Central Server (/home/eum/test)
+
+  T->>S: 00:05 run
+  S->>S: compute yesterday (YYYYMMDD)
+  S->>FC: analyze-daily -config ... -date YYYYMMDD -log-root ...
+  FC->>LOG: scan sensor dirs + read log files
+  FC->>FC: parse snd/rcv + metrics (no_response/zero_data/duplicates/WLS)
+  FC->>OUT: write daily/YYYYMMDD/analysis.json (mkdir if needed)
+  S->>TAR: create site_device_YYYYMMDD.tar.gz
+  TAR->>SCP: upload tar.gz
+  SCP->>SV: copy to /home/eum/test
