@@ -209,9 +209,11 @@ flowchart LR
   H --> I
   I --> J
   J --> K
----
+```
 
-### 실행 흐름 시퀀스
+### `실행 흐름 시퀀스`
+
+***
 
 ```mermaid
 ---
@@ -238,3 +240,4 @@ sequenceDiagram
   S->>TAR: create site_device_YYYYMMDD.tar.gz
   TAR->>SCP: upload tar.gz
   SCP->>SV: copy to /home/eum/test
+```
