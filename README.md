@@ -180,24 +180,36 @@ config:
   layout: dagre
 ---
 flowchart LR
+  %% =====================
+  %% Field PC
+  %% =====================
   subgraph FieldPC["현장 PC"]
     A["systemd timer<br>매일 00:05"]
-    B["run_analyze_yesterday.sh<br>날짜=전날 날짜"]
-    C["field-client analyze-daily<br>-config, -date, -log-root"]
+    B["run_analyze_yesterday.sh<br>날짜=전날"]
+    C["field-client analyze-daily<br>-config -date -log-root"]
     D["config.json<br>site_id, device_id, outbox_dir"]
-    E["mapping.json<br>센서 ID/타입/필드/허용오차"]
+    E["mapping.json<br>센서 ID/타입/허용오차"]
     F["log_root<br>GATE*, WLS*, PUMP*, TEMP*"]
     X["제외<br>ALL, PING, SERVER"]
-    G["outbox_dir/daily/YYYYMMDD/analysis.json"]
+    G["analysis.json<br>outbox/daily/YYYYMMDD"]
     H["tar.gz 패키징<br>site_device_YYYYMMDD.tar.gz"]
-    I["SCP 업로드<br>자동업로드 전용키"]
+    I["SCP 업로드<br>전용 키"]
   end
 
+  %% =====================
+  %% Central Server
+  %% =====================
   subgraph CentralServer["수집제어서버"]
-    J["/home/user/test<br>수신 폴더"]
-    K["후속 처리(향후)<br>압축해제 / 적재 / 시각화"]
+    J["inbox/<br>tar.gz 수신"]
+    K["압축 해제<br>(자동)"]
+    L["JSON 파싱<br>schema v1.0"]
+    M["PostgreSQL<br>집계 저장"]
+    N["Grafana OSS<br>웹 대시보드"]
   end
 
+  %% =====================
+  %% Flow
+  %% =====================
   A --> B
   B --> C
   D --> C
@@ -209,6 +221,9 @@ flowchart LR
   H --> I
   I --> J
   J --> K
+  K --> L
+  L --> M
+  M --> N
 ```
 
 ### 실행 흐름 시퀀스
